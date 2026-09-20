@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="600" viewBox="0 0 1100 600">
+<rect width="1100" height="600" fill="#f8fafc"/>
+<style>text{font-family:Arial,sans-serif;fill:#172033;font-size:16px}.box{fill:white;stroke:#334155;stroke-width:2}.wire{fill:none;stroke:#2563eb;stroke-width:2}</style>
+<text x="30" y="38" font-size="25">Fun Arcade — jump pad wiring</text>
+<text x="30" y="65">Original AtomS3 • rear header labels • verified G5 / G6 • 3.3 V compatible HX711</text>
+<rect class="box" x="30" y="105" width="240" height="235" rx="10"/>
+<text x="45" y="133">Four 50 kg half-bridge cells</text>
+<text x="45" y="170">Cell 1 center C1 → E+</text><text x="45" y="205">Cell 2 center C2 → A+</text>
+<text x="45" y="240">Cell 3 center C3 → E−</text><text x="45" y="275">Cell 4 center C4 → A−</text>
+<text x="45" y="316">Each cell: X — C — Y</text>
+<path class="wire" d="M270 210H330"/>
+<rect class="box" x="330" y="105" width="280" height="235" rx="10"/>
+<text x="345" y="133">Combined Wheatstone bridge</text>
+<text x="345" y="170">Floating outer-wire junctions:</text>
+<text x="345" y="205">Y1—X2     Y2—X3</text><text x="345" y="240">Y3—X4     Y4—X1</text>
+<text x="345" y="280">Orient X/Y for additive response.</text><text x="345" y="310">Test each corner separately.</text>
+<path class="wire" d="M610 210H690"/><text x="620" y="180">E± / A±</text>
+<rect class="box" x="690" y="105" width="370" height="235" rx="10"/>
+<text x="705" y="133">HX711 • Channel A • Gain 128</text><text x="705" y="172">Bridge: E+, E−, A+, A− terminals</text>
+<text x="705" y="210">RATE pin 15 → DVDD: 80 SPS</text><text x="705" y="245">Use verified board jumper / switch.</text>
+<text x="705" y="283">VCC     GND     DOUT     PD_SCK</text>
+<path class="wire" d="M730 340V395 M810 340V395 M900 340V395 M1000 340V395"/>
+<rect class="box" x="690" y="395" width="370" height="115" rx="10"/>
+<text x="713" y="426">3V3      GND       G5          G6</text><text x="705" y="468">AtomS3 rear header</text>
+<rect class="box" x="330" y="395" width="250" height="115" rx="10"/>
+<text x="345" y="430">Mac → USB data + power</text><text x="345" y="469">USB CDC telemetry / events</text><path class="wire" d="M580 450H690"/>
+<text x="30" y="550">See wiring.md for the authoritative netlist, supply checks, center-tap identification and source links.</text>
+<text x="30" y="577">Do not infer physical pin orientation or cell wire colors from this functional diagram.</text>
+</svg>

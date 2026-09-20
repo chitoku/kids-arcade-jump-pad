@@ -1,0 +1,10 @@
+flowchart LR
+  C1[Cell 1: 50 kg half bridge] --> B[Four-cell Wheatstone bridge\nRing netlist in wiring.md]
+  C2[Cell 2: 50 kg half bridge] --> B
+  C3[Cell 3: 50 kg half bridge] --> B
+  C4[Cell 4: 50 kg half bridge] --> B
+  B ---|C1 E+, C3 E-, C2 A+, C4 A-| H[HX711 channel A / gain 128\nRATE pin 15 to DVDD: 80 SPS]
+  A[AtomS3 rear header] -->|3V3 to VCC; GND to GND| H
+  H -->|DOUT to G5| A
+  A -->|G6 to PD_SCK| H
+  U[Mac USB data + power] --- A
