@@ -2,7 +2,7 @@
 
 Repository: `kids-arcade-jump-pad`; intended remote: `https://github.com/chitoku/kids-arcade-jump-pad.git`.
 
-## Implemented initial milestones (physical acceptance pending)
+## Implemented initial milestones (prototype tested)
 
 - M0: AtomS3 display boot screen, USB CDC, no wait for a host.
 - M1: nonblocking ready polling, signed raw HX711 channel A/gain 128, timestamped telemetry and observed SPS. RATE is hardware-controlled.
@@ -10,9 +10,11 @@ Repository: `kids-arcade-jump-pad`; intended remote: `https://github.com/chitoku
 - M3: inspectable five-state detector with dwell times, hysteresis, timeout/reset handling. Constants in Config.h. Host regression tests.
 - M4: one JUMP on confirmed unloading, one LAND on reloading, event fan-out separate from sensor and detector; LCD feedback and fault status.
 
-## Physical acceptance next
+## Prototype evidence and remaining acceptance
 
-Verify original AtomS3, actual HX711 supply arrangement and RATE jumper, cell center taps and corner polarity. Build a safe mechanical load path. Flash the identified board, verify LCD/CDC and no-sensor error, then connect sensor; check around 80 SPS under LCD/Serial load. Tare, calibrate with known mass, check each corner, record controlled loading and hops, tune thresholds. Unplug sensor during standing and flight; verify no stale events and empty-pad recovery tare. Test with host disconnected and reconnected. No physical claims are established by compiling alone.
+Builder confirmed four-corner 1 kg checks, responsive unloading, flicker-free large LCD and working JUMP/LAND on the assembled prototype. Telemetry confirmed about 82–83 SPS after the builder modified HX711 RATE wiring. Software smoothing is disabled.
+
+Remaining: finish and validate the mechanical assembly for the event, check stability on the actual grass surface, collect hop traces and tune thresholds as needed. Unplug sensor during standing and flight; verify no stale events and empty-pad recovery tare. Test with host disconnected and reconnected. Physical results above are builder reports and supplied telemetry; do not treat them as load-rating certification.
 
 ## M5: concurrent USB HID + CDC
 

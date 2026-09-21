@@ -9,6 +9,8 @@ Verified 2026-09-19 against [M5Stack AtomS3 official pinout and peripheral table
 | G5 | DT / DOUT |
 | G6 | SCK / PD_SCK |
 
+On the original AtomS3 rear header, viewed with the label upright, the left five positions are 3V3, G5, G6, G7, G8 from top to bottom. The right four are G39, G38, 5V, GND. Confirm against the [official schematic, J3/J4](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/472/Sch_M5_AtomS3_v1.0.pdf). The 3V3 header is present; do not confuse it with the right-side 5V pin.
+
 USB supplies AtomS3. Do not use the Grove red 5V lead for this 3.3V wiring. ESP32 GPIO is not 5V tolerant. If the module exposes separate VCC/VSUP and VDD/DVDD, identify its schematic first: digital DVDD must be 3.3 V. Some 5V analog regulator arrangements do not operate correctly at 3.3V; do not infer compatibility from the HX711 chip alone. For a verified split-supply board, analog supply may differ, but that is not the default diagram. Check E+/E- excitation with a meter before attaching the bridge.
 
 [Editable system diagram](wiring.mmd) and [vector diagram](wiring.svg) accompany this table. The table and cell netlist below define actual connections; diagram positions do not define physical header orientation.

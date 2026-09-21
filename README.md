@@ -2,19 +2,39 @@
 
 Firmware for **Fun Arcade**, Jun's official Kids Business Fair booth. Target: original M5Stack AtomS3 (C123, ESP32-S3), HX711 channel A / gain 128, four 50 kg three-wire half-bridge cells, plywood pad.
 
-## Develop on this Mac
+[日本語の導入手順](docs/quickstart-ja.md)
 
-Open this folder in VS Code and install the recommended PlatformIO IDE extension. PlatformIO's Build action uses `platformio.ini`; no Arduino IDE is needed. Dependencies are pinned. CLI equivalent:
+## Try it on another computer (VS Code + PlatformIO)
+
+This is a USB Serial prototype, **not yet a USB keyboard/game controller**. Connecting the pad streams readings and JUMP/LAND events; it does not send Space to a game yet.
+
+1. Install Git, VS Code, and the **PlatformIO IDE** extension (Windows, macOS or Linux).
+2. Clone this repository and open its root folder (the one containing `platformio.ini`):
+
+   ```sh
+   git clone https://github.com/chitoku/kids-arcade-jump-pad.git
+   cd kids-arcade-jump-pad
+   code .
+   ```
+
+   Alternatively use VS Code's **Git: Clone**, then Open Folder. Do not create a new PlatformIO project or search for AtomS3 in Board Explorer: the board configuration is included.
+3. Let PlatformIO install the pinned dependencies. Select **Project Tasks → atoms3 → General → Build**.
+4. Connect the original AtomS3 with a USB data cable. Close any Serial Monitor before **Upload**. Identify the correct board if multiple serial devices are connected.
+5. If Upload reports `No serial data received`, hold the AtomS3 reset button about two seconds until its internal green LED lights, release it, wait for USB enumeration, then retry Upload. This is the reset button, not the front display button. The port may change in download mode.
+6. After uploading, briefly reset if needed, then open **Monitor**. Click the terminal and type `status`, then Enter. Firmware echoes input, pauses telemetry while typing, and acknowledges commands.
+
+PlatformIO's terminal also supports these commands:
 
 ```sh
 pio run
 pio device list
-# Only after identifying the physical AtomS3 port:
-pio run -t upload --upload-port /dev/cu.YOUR_ATOMS3
-pio device monitor --port /dev/cu.YOUR_ATOMS3 --baud 115200
+pio run -t upload --upload-port YOUR_BOARD_PORT
+pio device monitor --port YOUR_BOARD_PORT --baud 115200
 ```
 
-For this initial build, PlatformIO was installed in the workspace's `work/pio-venv`. From this repository, the exact build command is `../../work/pio-venv/bin/pio run`. The VS Code extension can use its own managed PlatformIO installation.
+Use the port shown on your own machine (e.g. `COM5` on Windows, `/dev/cu.usbmodem...` on macOS or `/dev/ttyACM0` on Linux). Linux users may need serial-device permissions configured for their distribution. No project-specific secrets or local paths are required.
+
+Calibration is stored on the AtomS3, not the computer. Moving the same pad to another computer retains it; a different board/pad needs its own calibration. The physical HX711 RATE connection must select 80 SPS; flashing firmware alone cannot change that.
 
 ## First bring-up
 
@@ -31,13 +51,13 @@ For this initial build, PlatformIO was installed in the workspace's `work/pio-ve
 
 ```text
 HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated
-DATA,4120,843221,23122.00,23010.50,10.002,STANDING,79.8,1,1
+DATA,4120,843221,23122.00,23122.00,10.002,STANDING,79.8,1,1
 EVENT,JUMP,5000
 EVENT,LAND,5420
 STATUS,OK,sps=79.8
 ```
 
-`raw` is the unchanged signed ADC count; `net` subtracts tare; `filtered` is EMA in counts (alpha 0.5). `kg` is `nan` before valid tare/calibration or during faults. `ready` indicates valid tare and sensor, not calibration; `calibrated` indicates a stored scale. Pre-tare net/filtered counts are diagnostic only. Timestamps are unsigned milliseconds and wrap after about 49.7 days. SPS is the last two-second acquisition average. No-ready for 600 ms or ADC saturation causes HX711 ERROR, suppresses events, and requires automatic empty-pad tare on recovery.
+`raw` is the unchanged signed ADC count; `net` subtracts tare; `filtered` equals `net` in version 0.1.2: software smoothing is disabled. `kg` is `nan` before valid tare/calibration or during faults. `ready` indicates valid tare and sensor, not calibration; `calibrated` indicates a stored scale. Pre-tare net/filtered counts are diagnostic only. Timestamps are unsigned milliseconds and wrap after about 49.7 days. SPS is the last two-second acquisition average. No-ready for 600 ms or ADC saturation causes HX711 ERROR, suppresses events, and requires automatic empty-pad tare on recovery.
 
 Serial writes have zero timeout so disconnected/slow hosts cannot indefinitely block acquisition. Lines/events can be dropped under host backpressure; this prototype is not a lossless recorder. Raw values are never overwritten by filtering. LCD refresh is limited to 10 Hz; actual achievable sample rate must be checked on hardware.
 
@@ -58,4 +78,29 @@ c++ -std=c++11 -Iinclude test/detector_test.cpp -o /tmp/jump-pad-detector-test
 /tmp/jump-pad-detector-test
 ```
 
-Hardware bring-up remains pending. See [mechanical notes](docs/mechanical.md). No network features are included.
+Prototype validation: the builder confirmed 1 kg readings at all four corners, prompt unloading response, flicker-free LCD, and working JUMP/LAND detection. Supplied telemetry confirmed approximately 82–83 SPS and equal net/filtered values. This is prototype validation, not a completed fair-ready mechanical qualification. See [mechanical notes](docs/mechanical.md). No network features are included.
+
+## Interactive calibration console (0.1.1)
+
+Restart PlatformIO Monitor after uploading this version. Monitor uses LF and disables local echo because the firmware echoes input itself. Firmware accepts CR, LF and CRLF, including terminals using CR-only Enter. Backspace/Delete edits the current line; overlong commands are rejected.
+
+Typing the first printable character immediately pauses DATA and periodic STATUS output and shows `> ` with your input. Acquisition, filtering, detection and LCD updates continue. Events are suppressed on Serial while editing a line to avoid corrupting the prompt (not queued); they resume after Enter. Tare notifications are also suppressed while editing; `status` can check completion. The console is therefore not a lossless event log while typing.
+
+1. With pad empty, type `tare` and press Enter. Look for `ACK,tare`, then wait for `STATUS,ZERO,...` (at least 2.5 seconds).
+2. Place a known load and wait for settling. Type `cal 5` for exactly 5 kg, then Enter.
+3. `ACK,cal 5` confirms receipt; `STATUS,COUNTS_PER_KG,...` confirms calibration and saving. An ERROR means the command arrived but was rejected.
+4. `status` prints sensor health, tare status, raw/filtered counts, SPS and calibration factor once.
+5. `stream on` resumes telemetry. `stream off` keeps the console quiet. Streaming starts enabled after reboot.
+
+Host parser regression test:
+
+```sh
+c++ -std=c++11 -Iinclude test/command_line_test.cpp -o /tmp/jump-pad-command-test
+/tmp/jump-pad-command-test
+```
+
+## Display and response (0.1.2)
+
+LCD frames are drawn into a 128x128, 16-bit RAM canvas and transferred at 10 Hz, avoiding visible clear-then-redraw flashes. Acquisition and detection continue on each available HX711 sample independently of LCD refresh. The builder confirmed flicker-free operation; telemetry showed approximately 82–83 SPS on the modified HX711 board. The LCD shows measured SPS; `NEED 80` means the observed rate is below 60 SPS. The tare average remains intentional; ongoing measurements have no software smoothing. Raw ADC data and CSV columns are preserved, and saved calibration is retained.
+
+80 SPS cannot be selected by firmware through DT/SCK. Follow docs/wiring.md: RATE (chip pin 15) must be connected to DVDD (pin 16) instead of ground. The photographed board has no identified rate jumper; do not guess a resistor or cut point. Trace the unpowered board or use a breakout with a documented 10/80 switch. After the hardware change, power-cycle unloaded, verify approximately 80 SPS in `status` with streaming/display active, and recheck the known calibration mass.

@@ -1,0 +1,27 @@
+# 別のPCで試す手順
+
+現在は **Serial出力版**です。JUMP / LANDを検出しますが、ゲームへのSpaceキー送信（HID）は次の段階です。
+
+1. VS CodeとPlatformIO IDE拡張機能をインストール。
+2. VS Codeの「Git: Clone」で `https://github.com/chitoku/kids-arcade-jump-pad.git` を取得し、フォルダを開く。Gitがない場合は先にインストール。
+3. PlatformIO → Project Tasks → atoms3 → General → Build。
+4. AtomS3をUSBデータケーブルで接続。Monitorを閉じてUpload。複数台ある場合は対象を確認。
+5. 接続エラーなら、画面ボタンではなくリセットボタンを約2秒長押し。内部の緑LEDが点灯したら離し、数秒後にUploadを再実行。
+6. Monitorを開く。入力はログの出るターミナル内。最初の文字でログが止まり、入力内容が表示される。Enterで実行。
+
+## 校正と確認
+
+- 起動時は誰も乗らず、重りも載せない。自動でゼロ調整される。
+- `tare`：今の無荷重状態をゼロにする。`STATUS,ZERO,...` を待つ。画面ボタンでも可能。
+- 既知の重りを載せて安定後、1kgなら `cal 1`。`ACK`は受信、`STATUS,COUNTS_PER_KG,...`は校正成功。
+- `status`：状態を1回表示。
+- `stream on` / `stream off`：連続ログの開始・停止。
+- 校正値はAtomS3内に保存。同じ装置ならPCを変えても維持される。別の装置では校正が必要。
+
+## ハードウェア
+
+[配線説明](wiring.md)と[配線図](wiring.svg)参照。原型AtomS3の3V3 → HX711 VCC、GND → GND、G5 → DT、G6 → SCK。3.3V対応HX711基板を使用。
+
+80 SPS化はHX711のRATE端子によるハード設定。ソフトだけでは切り替わらない。試作機は基板加工後に約82〜83 SPSを確認済みだが、別基板で同じ場所を切るとは限らない。
+
+まず静荷重で中央と四隅の読み・ガタつきを確認。STANDINGには8kg以上を500ms維持する必要があるので、1kgの重りではJUMP判定は作動しない。人が使う前に機械構造の安定性を確認する。
