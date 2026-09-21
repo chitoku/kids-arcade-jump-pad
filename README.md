@@ -40,7 +40,7 @@ Calibration is stored on the AtomS3, not the computer. Moving the same pad to an
 
 1. Follow [wiring](docs/wiring.md), with USB disconnected. Verify the HX711 board supports 3.3 V supply/logic and select 80 SPS in hardware.
 2. Connect AtomS3 by a USB data cable, identify its serial port, then upload. If necessary, hold its reset button about two seconds to enter download mode; see the official board guide linked in wiring.
-3. Leave the pad empty at boot or after a sensor fault. Automatic tare discards 500 ms, then averages for at least two seconds (20 samples minimum). Button A or Serial `tare` followed by newline repeats this. Tare assumes the pad is empty; it cannot distinguish a stationary person from the pad.
+3. Leave the pad empty at boot or after a sensor fault. Automatic tare discards 500 ms, then averages for at least two seconds (20 samples minimum). Serial `tare` followed by newline repeats this. The display button resets the recorded maximum weight. Tare assumes the pad is empty; it cannot distinguish a stationary person from the pad.
 4. Check raw readings under small loads at each corner. All four must change the sum in the same direction. Check reported SPS: near 80, not 10.
 5. After tare, place a known stable weight, e.g. 10 kg, and send `cal 10` followed by newline. Signed counts/kg are saved in NVS; zero is measured again each boot. Remove weight and verify near zero. Calibration is deliberately manual; wait for a steady reading before sending it.
 6. Start with controlled loading/unloading, then tune `include/Config.h` before trying small hops on a mechanically validated platform.
@@ -119,8 +119,20 @@ For the old Serial-only behavior, select **atoms3-serial** in Project Tasks or u
 
 - Verify host enumerates both keyboard and CDC; retain about 80 SPS with Monitor active and game focused.
 - Confirm one Space-down on takeoff, held through flight, then Space-up on landing with a key-event viewer/game (a text editor alone cannot verify release).
-- While airborne, test tare/button, `hid off`, no-landing timeout and sensor fault: key must release.
+- While airborne, test the tare command, `hid off`, no-landing timeout and sensor fault: key must release.
 - Disconnect/reconnect and suspend/resume while held; no stale press on reconnect, and a new standing/jump cycle works.
 - Confirm Serial-only build sends no keys. Flashing remains manual to avoid typing into an unintended application.
 
 Host regression test: `c++ -std=c++11 -Iinclude test/space_key_test.cpp -o /tmp/jump-pad-space-test && /tmp/jump-pad-space-test`.
+
+## Maximum recorded weight (0.2.1)
+
+The LCD always shows MAX kg, including during JUMP/LAND, tare and sensor errors. It records every valid calibrated sample (~80 SPS), not just the 10 Hz display updates. The current weight remains large; raw counts remain available in Serial. Press the display button once or send `max reset` to clear MAX. The next valid sample starts a new record immediately (so reset unloaded if you want it near zero). This button no longer tares or changes calibration or HID state.
+
+MAX is held in RAM until reset/reboot or successful recalibration. Tare and sensor recovery preserve the existing maximum. Before any valid sample, MAX shows `--`. `status` includes `STATUS,MAX,kg=...,valid=...,clipped=...`; existing DATA columns are unchanged. ADC saturation latches `ADC CLIP!` next to MAX until reset/reboot/recalibration; saturated samples are not valid peaks. The flag means the recorded maximum may understate the actual peak.
+
+This is the largest sampled equivalent load in kg, not a certified peak-force or safe-capacity indicator. Short landing impulses may be missed or attenuated by the ADC, and four nominal 50 kg cells do not establish a safe 200 kg platform capacity: an individual corner can overload below 200 kg total. No percentage-of-safe-capacity or 200 kg clamp is applied. Validate mounting, stops and actual load ratings separately.
+
+Host test: `c++ -std=c++11 -Iinclude test/peak_weight_test.cpp -o /tmp/jump-pad-peak-test && /tmp/jump-pad-peak-test`.
+
+On hardware: apply and remove a known mass, confirm MAX stays; press the display button unloaded, confirm it resets without starting tare; verify MAX remains visible during JUMP/LAND and both USB outputs still work. Hardware acceptance for this display change is pending.

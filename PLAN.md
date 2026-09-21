@@ -6,7 +6,7 @@ Repository: `kids-arcade-jump-pad`; intended remote: `https://github.com/chitoku
 
 - M0: AtomS3 display boot screen, USB CDC, no wait for a host.
 - M1: nonblocking ready polling, signed raw HX711 channel A/gain 128, timestamped telemetry and observed SPS. RATE is hardware-controlled.
-- M2: empty-pad tare at boot/button/command, signed rough calibration saved in NVS, filtered counts independent of raw values.
+- M2: empty-pad tare at boot/command, signed rough calibration saved in NVS, filtered counts independent of raw values.
 - M3: inspectable five-state detector with dwell times, hysteresis, timeout/reset handling. Constants in Config.h. Host regression tests.
 - M4: one JUMP on confirmed unloading, one LAND on reloading, event fan-out separate from sensor and detector; LCD feedback and fault status.
 

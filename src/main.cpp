@@ -6,6 +6,7 @@
 #include "Detector.h"
 #include "CommandLine.h"
 #include "HidOutput.h"
+#include "PeakWeight.h"
 
 HidOutput hidOutput;
 static_assert(ARDUINO_USB_MODE == 0, "Native TinyUSB mode required for future CDC + HID");
@@ -15,6 +16,7 @@ M5Canvas lcd(&M5.Display);
 bool lcdReady = false;
 Preferences prefs;
 Detector detector;
+PeakWeight peakWeight;
 portMUX_TYPE hxMux = portMUX_INITIALIZER_UNLOCKED;
 int32_t raw = 0;
 float zero = 0, filtered = 0, scale = 0;
@@ -42,6 +44,10 @@ bool readSensor(int32_t& value) {
   portEXIT_CRITICAL(&hxMux);
   value = (bits & 0x800000) ? static_cast<int32_t>(bits | 0xff000000) : bits;
   return true;
+}
+void resetPeak() {
+  peakWeight.reset();
+  if (!editing) Serial.println("STATUS,MAX_RESET");
 }
 void startTare(uint32_t now) {
   taring = true; zeroValid = false; tareSum = 0; tareCount = 0; tareStart = now;
@@ -75,7 +81,7 @@ void commands(uint32_t now) {
     editing = false;
     char* line = input.text;
     if (input.overflow) Serial.println("ERROR,COMMAND_TOO_LONG");
-    else if (!*line) Serial.println("STATUS,HELP,tare | cal <known_kg> | status | stream on | stream off | hid on | hid off");
+    else if (!*line) Serial.println("STATUS,HELP,tare | cal <known_kg> | status | stream on | stream off | hid on | hid off | max reset");
     else {
       Serial.printf("ACK,%s\n", line);
       if (!strcmp(line, "stream on")) { streamEnabled = true; Serial.println("STATUS,STREAM,ON"); }
@@ -85,7 +91,10 @@ void commands(uint32_t now) {
         hidOutput.key.enabled = JUMP_PAD_HID; hidOutput.release();
         Serial.println(JUMP_PAD_HID ? "STATUS,HID,ON" : "ERROR,HID_NOT_COMPILED");
       }
+      else if (!strcmp(line, "max reset")) resetPeak();
       else if (!strcmp(line, "status")) {
+        Serial.printf("STATUS,MAX,kg=%.3f,valid=%u,clipped=%u\n",
+                      peakWeight.kg, peakWeight.valid, peakWeight.clipped);
         Serial.printf("STATUS,HID,compiled=%u,enabled=%u,connected=%u,space_requested=%u\n",
                       unsigned(JUMP_PAD_HID), hidOutput.key.enabled, hidOutput.connected(), hidOutput.key.down);
         Serial.printf("STATUS,SENSOR,%s,taring=%u,zero_valid=%u,raw=%ld,filtered=%.2f,sps=%.1f,counts_per_kg=%.6f\n",
@@ -102,10 +111,10 @@ void commands(uint32_t now) {
           Serial.println("ERROR,CAL_SAVE_FAILED");
           input.clear(); continue;
         }
-        scale = candidate; detector.reset(); hidOutput.release();
+        scale = candidate; detector.reset(); hidOutput.release(); resetPeak();
         Serial.printf("STATUS,COUNTS_PER_KG,%.6f\n", scale);
       }
-    } else Serial.println("ERROR,UNKNOWN_COMMAND,use tare | cal <known_kg> | status | stream on | stream off | hid on | hid off");
+    } else Serial.println("ERROR,UNKNOWN_COMMAND,use tare | cal <known_kg> | status | stream on | stream off | hid on | hid off | max reset");
     }
     input.clear();
     if (!streamEnabled) Serial.println("READY,quiet_mode,type_command_then_Enter");
@@ -134,17 +143,17 @@ void setup() {
   pinMode(Config::dt, INPUT_PULLUP);
   prefs.begin("jump-pad", false); scale = prefs.getFloat("scale", 0);
   if (!isfinite(scale)) scale = 0;
-  Serial.println("BOOT,Fun Arcade,AtomS3,0.2.0");
+  Serial.println("BOOT,Fun Arcade,AtomS3,0.2.1");
   Serial.println("HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated");
   startTare(millis()); rateStart = millis();
 }
 void loop() {
   uint32_t now = millis(); M5.update(); commands(now);
-  if (M5.BtnA.wasPressed()) startTare(now);
+  if (M5.BtnA.wasPressed()) resetPeak();
   if (readSensor(raw)) {
     bool recovering = fault || now - lastSample > Config::sensorTimeoutMs; lastSample = now;
     fault = raw == -8388608 || raw == 8388607;
-    if (fault) { detector.reset(); zeroValid = false; }
+    if (fault) { peakWeight.clipped = true; detector.reset(); zeroValid = false; }
     else {
       if (recovering) startTare(now);
       ++sampleCount;
@@ -160,6 +169,7 @@ void loop() {
     float net = raw - zero;
     filtered = net; // Preserve CSV schema; software smoothing is disabled.
     bool ready = zeroValid && !fault && !taring;
+    peakWeight.observe(scale != 0 ? filtered / scale : 0, ready && scale != 0);
     if (ready && scale != 0) emitEvent(detector.update(filtered / scale, now), now);
     // Nonblocking USB writes may drop telemetry if host is absent/slow.
     if (streamEnabled && !editing) {
@@ -183,11 +193,11 @@ void loop() {
     lastDisplay = now;
     lcd.fillScreen(TFT_BLACK);
     if (fault) {
-      lcdLine("HX711", 22, 3);
-      lcdLine("ERROR", 62, 3);
+      lcdLine("HX711", 12, 3);
+      lcdLine("ERROR", 44, 3);
     } else if (taring) {
       lcdLine("TARE", 24, 4);
-      lcdLine("Keep empty", 80, 2);
+      lcdLine("Keep empty", 64, 2);
     } else if (feedbackAt && now - feedbackAt < 450) {
       lcdLine(feedback, 40, 4);
     } else {
@@ -197,19 +207,22 @@ void loop() {
         float kg = filtered / scale;
         if (fabsf(kg) < 0.05f) kg = 0; // Avoid confusing "-0.0" at rest.
         snprintf(weight, sizeof(weight), "%.1f", kg);
-        lcdLine(weight, 34, 5);
-        lcdLine("kg", 80, 2);
+        lcdLine(weight, 26, 4);
+        lcdLine("kg", 60, 2);
       } else {
-        lcdLine("CAL", 30, 4);
-        lcdLine("REQUIRED", 70, 2);
+        lcdLine("CAL", 26, 4);
+        lcdLine("REQUIRED", 60, 2);
       }
-      char rawText[32];
-      snprintf(rawText, sizeof(rawText), "RAW %ld", (long)raw);
-      lcdLine(rawText, 112, 1);
-      char rateText[24];
-      snprintf(rateText, sizeof(rateText), "%.0f SPS%s", sps, sps < 60 ? " / NEED 80" : "");
-      lcdLine(rateText, 100, 1);
     }
+    char rateText[24];
+    snprintf(rateText, sizeof(rateText), "%.0f SPS%s", sps, sps < 60 ? " / NEED 80" : "");
+    lcdLine(rateText, 80, 1);
+    lcd.drawFastHLine(4, 91, 120, TFT_DARKGREY);
+    lcdLine(peakWeight.clipped ? "MAX kg / ADC CLIP!" : "MAX kg", 94, 1);
+    char peakText[32];
+    if (peakWeight.valid) snprintf(peakText, sizeof(peakText), "%.1f", peakWeight.kg);
+    else snprintf(peakText, sizeof(peakText), "--");
+    lcdLine(peakText, 106, 2);
     lcd.pushSprite(0, 0); // Transfer the completed frame; never clear the live LCD.
   }
   delay(1);
