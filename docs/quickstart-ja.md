@@ -1,6 +1,6 @@
 # 別のPCで試す手順
 
-現在は **Serial出力版**です。JUMP / LANDを検出しますが、ゲームへのSpaceキー送信（HID）は次の段階です。
+標準の **atoms3はUSBキーボード＋Serial版**です。JUMPでSpaceを押し、LANDで離します。Serial専用はatoms3-serialを選んでください。HIDの実機・ゲームでの確認はこれからです。
 
 1. VS CodeとPlatformIO IDE拡張機能をインストール。
 2. VS Codeの「Git: Clone」で `https://github.com/chitoku/kids-arcade-jump-pad.git` を取得し、フォルダを開く。Gitがない場合は先にインストール。
@@ -25,3 +25,9 @@
 80 SPS化はHX711のRATE端子によるハード設定。ソフトだけでは切り替わらない。試作機は基板加工後に約82〜83 SPSを確認済みだが、別基板で同じ場所を切るとは限らない。
 
 まず静荷重で中央と四隅の読み・ガタつきを確認。STANDINGには8kg以上を500ms維持する必要があるので、1kgの重りではJUMP判定は作動しない。人が使う前に機械構造の安定性を確認する。
+
+## HIDでゲームにつなぐ（0.2.0）
+
+Upload後、ゲームを前面にしてジャンプ操作をSpaceへ割り当てます。Serial Monitorも同時使用できます。tare・センサー異常・検出状態のリセット・着地なしで1.5秒経過した場合もSpaceを解放します。
+
+`hid off`でキー送信停止、`hid on`で再開（次のJUMPから）。設定は再起動で標準のONに戻ります。`stream off`はSerialログだけを止めます。Spaceは空中で押しっぱなしなので、ゲームやOSによってはキーリピートが起きます。まずキーの押下・解放を表示するツール等で確認してください。

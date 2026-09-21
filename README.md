@@ -6,7 +6,7 @@ Firmware for **Fun Arcade**, Jun's official Kids Business Fair booth. Target: or
 
 ## Try it on another computer (VS Code + PlatformIO)
 
-This is a USB Serial prototype, **not yet a USB keyboard/game controller**. Connecting the pad streams readings and JUMP/LAND events; it does not send Space to a game yet.
+The default `atoms3` build is a composite **USB keyboard + USB Serial** device: JUMP holds Space, LAND releases it. Serial telemetry remains available concurrently. `atoms3-serial` is the diagnostic-only alternative. HID implementation is build/test verified; actual game/USB validation is pending.
 
 1. Install Git, VS Code, and the **PlatformIO IDE** extension (Windows, macOS or Linux).
 2. Clone this repository and open its root folder (the one containing `platformio.ini`):
@@ -67,7 +67,7 @@ Serial writes have zero timeout so disconnected/slow hosts cannot indefinitely b
 
 Thresholds are starting values, not measured pad tuning. Walking off can look like a jump; one total-force sensor cannot prove a person is airborne. Long absence resets EMPTY without a LAND event. Bounce/noise and real takeoff latency require physical testing. Automatic tare after recovery requires everyone to step off.
 
-Sensor acquisition, the hardware-independent detector, and event fan-out are separate. USB uses native TinyUSB CDC (`ARDUINO_USB_MODE=0`) to leave room for composite CDC+HID. Only SERIAL_ONLY is implemented; selecting SERIAL_PLUS_HID deliberately fails compilation until that transport is added. See [PLAN](PLAN.md).
+Sensor acquisition, the hardware-independent detector, and event fan-out are separate. USB uses native TinyUSB CDC (`ARDUINO_USB_MODE=0`) to leave room for composite CDC+HID. Config::outputMode follows the build: SERIAL_PLUS_HID by default, SERIAL_ONLY with `JUMP_PAD_HID=0`. See [PLAN](PLAN.md).
 
 ## Validation
 
@@ -104,3 +104,23 @@ c++ -std=c++11 -Iinclude test/command_line_test.cpp -o /tmp/jump-pad-command-tes
 LCD frames are drawn into a 128x128, 16-bit RAM canvas and transferred at 10 Hz, avoiding visible clear-then-redraw flashes. Acquisition and detection continue on each available HX711 sample independently of LCD refresh. The builder confirmed flicker-free operation; telemetry showed approximately 82–83 SPS on the modified HX711 board. The LCD shows measured SPS; `NEED 80` means the observed rate is below 60 SPS. The tare average remains intentional; ongoing measurements have no software smoothing. Raw ADC data and CSV columns are preserved, and saved calibration is retained.
 
 80 SPS cannot be selected by firmware through DT/SCK. Follow docs/wiring.md: RATE (chip pin 15) must be connected to DVDD (pin 16) instead of ground. The photographed board has no identified rate jumper; do not guess a resistor or cut point. Trace the unpowered board or use a breakout with a documented 10/80 switch. After the hardware change, power-cycle unloaded, verify approximately 80 SPS in `status` with streaming/display active, and recheck the known calibration mass.
+
+## USB keyboard + Serial (0.2.0)
+
+Build/upload environment `atoms3` to send **Space down on JUMP, Space up on LAND** while keeping USB CDC telemetry. There is no timed 30 ms tap. Host/game key-repeat behavior applies while held. No Serial Monitor connection is required. Focus the intended game and bind its jump action to Space. On macOS a keyboard-identification assistant may appear; this pad only sends Space and cannot perform the normal left/right-Shift identification sequence.
+
+The hold is cancelled on tare, successful calibration, sensor fault/stale readings, detector reset, `hid off`, USB suspend/disconnect, or after 1500 ms without landing. If disconnected, a release cannot reach the host until it reconnects; the first report after reconnect is all keys up. Old takeoffs are never replayed. Endpoint-busy reports are retried in the main loop without waiting for USB completion; an unsent press is discarded if a release becomes necessary first.
+
+`hid off` disables key output until `hid on` or reboot. `hid on` waits for a new JUMP; it does not press Space immediately. `status` reports compiled/enabled/connected state and requested Space state (not host acknowledgement). Console typing pauses telemetry but does not disable HID; use `hid off` while calibrating if needed. `stream off` does not disable HID.
+
+For the old Serial-only behavior, select **atoms3-serial** in Project Tasks or use `pio run -e atoms3-serial -t upload`. This build does not register a keyboard descriptor. Normal `pio run` selects only `atoms3`.
+
+### Hardware acceptance checklist (pending)
+
+- Verify host enumerates both keyboard and CDC; retain about 80 SPS with Monitor active and game focused.
+- Confirm one Space-down on takeoff, held through flight, then Space-up on landing with a key-event viewer/game (a text editor alone cannot verify release).
+- While airborne, test tare/button, `hid off`, no-landing timeout and sensor fault: key must release.
+- Disconnect/reconnect and suspend/resume while held; no stale press on reconnect, and a new standing/jump cycle works.
+- Confirm Serial-only build sends no keys. Flashing remains manual to avoid typing into an unintended application.
+
+Host regression test: `c++ -std=c++11 -Iinclude test/space_key_test.cpp -o /tmp/jump-pad-space-test && /tmp/jump-pad-space-test`.

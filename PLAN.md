@@ -16,9 +16,13 @@ Builder confirmed four-corner 1 kg checks, responsive unloading, flicker-free la
 
 Remaining: finish and validate the mechanical assembly for the event, check stability on the actual grass surface, collect hop traces and tune thresholds as needed. Unplug sensor during standing and flight; verify no stale events and empty-pad recovery tare. Test with host disconnected and reconnected. Physical results above are builder reports and supplied telemetry; do not treat them as load-rating certification.
 
-## M5: concurrent USB HID + CDC
+## M5: concurrent USB HID + CDC — implemented, hardware verification pending
 
-Keep `SERIAL_ONLY` as default; add `SERIAL_PLUS_HID` to the event transport. TinyUSB native USB mode is already selected, using ESP32-S3 USB pins internally. Register USBHIDKeyboard alongside CDC before USB startup; verify Arduino 2.0.17 composite descriptor/startup ordering against its bundled examples. On JUMP, enqueue a Space press and scheduled release (e.g. 30 ms); never delay sensor reading, and always release on reset/fault/disconnect. LAND does not press a key. Keep all existing DATA/STATUS/EVENT records concurrently. Test both modes on macOS, including key-up, reconnect, serial graphing, sustained sample rate and absence of repeated keys. Do not enable HID until explicitly testing in a safe focused application.
+Default atoms3 registers a standard USB keyboard alongside CDC. JUMP requests Space down; LAND requests Space up. The user's chosen behavior is a hold through flight, replacing the earlier short-pulse proposal. The atoms3-serial environment omits HID.
+
+The transport sends nonblocking TinyUSB reports, retries busy endpoints and synchronizes all-keys-up after USB lifecycle changes. Key intent is cleared on invalid sensor/tare/calibration/reset/timeout, or hid off. Reconnect and hid on never replay old jumps. Existing sensor and detector logic is unchanged.
+
+Both builds and host policy tests are required. Complete the README hardware acceptance checklist (enumeration, real key-up, reconnect/suspend, simultaneous telemetry and game input) on the physical pad before claiming M5 accepted.
 
 ## Deferred
 

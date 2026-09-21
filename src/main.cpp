@@ -5,9 +5,9 @@
 #include "Config.h"
 #include "Detector.h"
 #include "CommandLine.h"
+#include "HidOutput.h"
 
-static_assert(Config::outputMode == Config::OutputMode::SERIAL_ONLY,
-              "HID transport is a future milestone; implement it before enabling");
+HidOutput hidOutput;
 static_assert(ARDUINO_USB_MODE == 0, "Native TinyUSB mode required for future CDC + HID");
 bool streamEnabled = true;
 bool editing = false;
@@ -45,12 +45,13 @@ bool readSensor(int32_t& value) {
 }
 void startTare(uint32_t now) {
   taring = true; zeroValid = false; tareSum = 0; tareCount = 0; tareStart = now;
-  detector.reset();
+  detector.reset(); hidOutput.release();
   if (!editing) Serial.println("STATUS,TARE,keep_pad_empty");
 }
-// Single event fan-out point: future HID receives the same event as Serial.
+// Fan out to HID even when the interactive Serial console is quiet.
 void emitEvent(Event event, uint32_t now) {
   if (event == Event::NONE) return;
+  hidOutput.event(event, now);
   feedback = event == Event::JUMP ? "JUMP!" : "LAND";
   feedbackAt = now;
   if (!editing) Serial.printf("EVENT,%s,%lu\n", event == Event::JUMP ? "JUMP" : "LAND", (unsigned long)now);
@@ -74,12 +75,19 @@ void commands(uint32_t now) {
     editing = false;
     char* line = input.text;
     if (input.overflow) Serial.println("ERROR,COMMAND_TOO_LONG");
-    else if (!*line) Serial.println("STATUS,HELP,tare | cal <known_kg> | status | stream on | stream off");
+    else if (!*line) Serial.println("STATUS,HELP,tare | cal <known_kg> | status | stream on | stream off | hid on | hid off");
     else {
       Serial.printf("ACK,%s\n", line);
       if (!strcmp(line, "stream on")) { streamEnabled = true; Serial.println("STATUS,STREAM,ON"); }
       else if (!strcmp(line, "stream off")) { streamEnabled = false; Serial.println("STATUS,STREAM,OFF"); }
+      else if (!strcmp(line, "hid off")) { hidOutput.key.enabled = false; hidOutput.release(); Serial.println("STATUS,HID,OFF"); }
+      else if (!strcmp(line, "hid on")) {
+        hidOutput.key.enabled = JUMP_PAD_HID; hidOutput.release();
+        Serial.println(JUMP_PAD_HID ? "STATUS,HID,ON" : "ERROR,HID_NOT_COMPILED");
+      }
       else if (!strcmp(line, "status")) {
+        Serial.printf("STATUS,HID,compiled=%u,enabled=%u,connected=%u,space_requested=%u\n",
+                      unsigned(JUMP_PAD_HID), hidOutput.key.enabled, hidOutput.connected(), hidOutput.key.down);
         Serial.printf("STATUS,SENSOR,%s,taring=%u,zero_valid=%u,raw=%ld,filtered=%.2f,sps=%.1f,counts_per_kg=%.6f\n",
                       fault ? "ERROR" : "OK", taring, zeroValid, (long)raw, filtered, sps, scale);
       }
@@ -94,10 +102,10 @@ void commands(uint32_t now) {
           Serial.println("ERROR,CAL_SAVE_FAILED");
           input.clear(); continue;
         }
-        scale = candidate; detector.reset();
+        scale = candidate; detector.reset(); hidOutput.release();
         Serial.printf("STATUS,COUNTS_PER_KG,%.6f\n", scale);
       }
-    } else Serial.println("ERROR,UNKNOWN_COMMAND,use tare | cal <known_kg> | status | stream on | stream off");
+    } else Serial.println("ERROR,UNKNOWN_COMMAND,use tare | cal <known_kg> | status | stream on | stream off | hid on | hid off");
     }
     input.clear();
     if (!streamEnabled) Serial.println("READY,quiet_mode,type_command_then_Enter");
@@ -120,12 +128,13 @@ void setup() {
   lcd.setColorDepth(16);
   lcdReady = lcd.createSprite(128, 128) != nullptr;
   if (!lcdReady) M5.Display.println("LCD BUFFER ERROR");
+  hidOutput.begin();
   Serial.begin(115200); Serial.setTxTimeoutMs(0);
   pinMode(Config::sck, OUTPUT); digitalWrite(Config::sck, LOW);
   pinMode(Config::dt, INPUT_PULLUP);
   prefs.begin("jump-pad", false); scale = prefs.getFloat("scale", 0);
   if (!isfinite(scale)) scale = 0;
-  Serial.println("BOOT,Fun Arcade,AtomS3,0.1.2");
+  Serial.println("BOOT,Fun Arcade,AtomS3,0.2.0");
   Serial.println("HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated");
   startTare(millis()); rateStart = millis();
 }
@@ -162,6 +171,7 @@ void loop() {
   if (now - lastSample > Config::sensorTimeoutMs) {
     fault = true; zeroValid = false; detector.reset();
   }
+  hidOutput.update(millis(), !fault && zeroValid && !taring && scale != 0, detector.state);
   if (now - rateStart >= 2000) {
     sps = sampleCount * 1000.0f / (now - rateStart); sampleCount = 0; rateStart = now;
   }
