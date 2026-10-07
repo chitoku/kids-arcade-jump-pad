@@ -141,6 +141,8 @@ On hardware: apply and remove a known mass, confirm MAX stays; press the display
 
 The composite USB Serial + keyboard firmware now accepts these 115200 baud commands. `status` or `tune show` includes the active thresholds and `dirty=1` while they are not saved. `tune set` applies all seven values together and resets detection, releasing Space if held. Leave the pad empty when applying a new profile, then measure several takeoff/landing cycles before saving.
 
+The firmware currently emits both HID Space and Serial `EVENT,JUMP` / `EVENT,LAND`. Crossing Fair uses HID for gameplay and Serial for diagnostics, avoiding duplicate inputs. For a future Serial gameplay trial, use the firmware's event records as the input (not raw ADC samples), compare their timing against host Space keydown, and turn off HID with `hid off` or ignore it in the game for that pad. `hid on` restores the current HID behavior. This preserves both test paths without choosing one prematurely.
+
 ```text
 tune show
 tune set <enter_kg> <leave_kg> <air_kg> <land_kg> <standing_ms> <air_ms> <landing_ms>
