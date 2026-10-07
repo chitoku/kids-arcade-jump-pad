@@ -27,7 +27,10 @@ class Detector {
         else baseline += 0.01f * (kg - baseline);
         break;
       case State::UNWEIGHTING:
-        if (kg < tuning.airKg) {
+        // A heavier player's brief takeoff may not unload this pad all the
+        // way to the child-sized absolute threshold. Require a large drop
+        // relative to their own standing weight as an alternative.
+        if (kg < (baseline * 0.25f > tuning.airKg ? baseline * 0.25f : tuning.airKg)) {
           if (!lowTiming) { lowSince = now; lowTiming = true; }
           if (now - lowSince >= tuning.airConfirmMs) { go(State::AIRBORNE, now); return Event::JUMP; }
         } else lowTiming = false;
@@ -35,12 +38,18 @@ class Detector {
         else if (now - since > Config::unweightTimeoutMs) reset();
         break;
       case State::AIRBORNE:
-        if (kg >= tuning.landKg) { go(State::LANDING, now); return Event::LAND; }
+        if (kg >= (baseline * 0.4f > tuning.landKg ? baseline * 0.4f : tuning.landKg)) {
+          go(State::LANDING, now); return Event::LAND;
+        }
         if (now - since > Config::flightTimeoutMs) reset();
         break;
       case State::LANDING:
         if (kg < tuning.leaveKg) reset();
-        else if (now - since >= tuning.landingMs) { baseline = kg; go(State::STANDING, now); }
+        else if (now - since >= tuning.landingMs) {
+          // The landing sample is an impact peak, not the player's resting weight.
+          // Keep the baseline from before takeoff and let STANDING adapt it.
+          go(State::STANDING, now);
+        }
         break;
     }
     return Event::NONE;

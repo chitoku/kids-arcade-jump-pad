@@ -45,5 +45,48 @@ int main() {
   };
   assert(rapidHops(200) == 1);
   assert(rapidHops(60) == 10);
+
+  // An adult's landing impact can be several times their standing weight.
+  // It must not become the new standing baseline and block later hops.
+  Detector adult;
+  DetectorTuning adultTuning;
+  adultTuning.landingMs = 60;
+  adult.setTuning(adultTuning);
+  unsigned adultJumps = 0;
+  for (uint32_t ms = 0; ms <= 600; ms += 12) adult.update(60, ms);
+  for (unsigned hop = 0; hop < 10; ++hop) {
+    const uint32_t start = 612 + hop * 300;
+    for (uint32_t ms = start; ms < start + 72; ms += 12)
+      if (adult.update(0, ms) == Event::JUMP) ++adultJumps;
+    for (uint32_t ms = start + 72; ms < start + 168; ms += 12)
+      adult.update(180, ms);
+    for (uint32_t ms = start + 168; ms < start + 300; ms += 12)
+      adult.update(60, ms);
+  }
+  assert(adultJumps == 10);
+
+  Detector adultPause;
+  adultPause.setTuning(adultTuning);
+  for (uint32_t ms = 0; ms <= 600; ms += 12) adultPause.update(60, ms);
+  for (uint32_t ms = 612; ms < 684; ms += 12) adultPause.update(0, ms);
+  for (uint32_t ms = 684; ms < 780; ms += 12) adultPause.update(180, ms);
+  for (uint32_t ms = 780; ms < 1400; ms += 12) adultPause.update(60, ms);
+  assert(adultPause.state == State::STANDING);
+  unsigned nextJump = 0;
+  for (uint32_t ms = 1404; ms < 1476; ms += 12)
+    if (adultPause.update(0, ms) == Event::JUMP) ++nextJump;
+  assert(nextJump == 1);
+
+  Detector partialTakeoff;
+  adultTuning.airConfirmMs = 20;
+  partialTakeoff.setTuning(adultTuning);
+  for (uint32_t ms = 0; ms <= 600; ms += 12) partialTakeoff.update(60, ms);
+  for (uint32_t ms = 612; ms < 660; ms += 12)
+    assert(partialTakeoff.update(20, ms) == Event::NONE);
+  assert(partialTakeoff.state == State::UNWEIGHTING);
+  unsigned partialJumps = 0;
+  for (uint32_t ms = 660; ms < 708; ms += 12)
+    if (partialTakeoff.update(10, ms) == Event::JUMP) ++partialJumps;
+  assert(partialJumps == 1);
   std::puts("Tuning tests passed: validation, lighter player, rapid repeat jumps.");
 }
