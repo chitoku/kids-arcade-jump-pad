@@ -16,6 +16,9 @@ M5Canvas lcd(&M5.Display);
 bool lcdReady = false;
 Preferences prefs;
 Detector detector;
+struct SavedDetectorTuning { uint32_t version; DetectorTuning values; };
+constexpr uint32_t tuningVersion = 1;
+bool tuningDirty = false;
 PeakWeight peakWeight;
 portMUX_TYPE hxMux = portMUX_INITIALIZER_UNLOCKED;
 int32_t raw = 0;
@@ -49,6 +52,18 @@ void resetPeak() {
   peakWeight.reset();
   if (!editing) Serial.println("STATUS,MAX_RESET");
 }
+void printTuning() {
+  const auto& t = detector.tuning;
+  Serial.printf("STATUS,TUNE,enter=%.2f,leave=%.2f,air=%.2f,land=%.2f,standing_ms=%u,air_ms=%u,landing_ms=%u,dirty=%u\n",
+                t.enterKg, t.leaveKg, t.airKg, t.landKg,
+                t.standingMs, t.airConfirmMs, t.landingMs, tuningDirty);
+}
+void applyTuning(const DetectorTuning& next) {
+  detector.setTuning(next);
+  hidOutput.release(); // A changed threshold never keeps a stale Space press.
+  tuningDirty = true;
+  printTuning();
+}
 void startTare(uint32_t now) {
   taring = true; zeroValid = false; tareSum = 0; tareCount = 0; tareStart = now;
   detector.reset(); hidOutput.release();
@@ -81,7 +96,7 @@ void commands(uint32_t now) {
     editing = false;
     char* line = input.text;
     if (input.overflow) Serial.println("ERROR,COMMAND_TOO_LONG");
-    else if (!*line) Serial.println("STATUS,HELP,tare | cal <known_kg> | status | stream on | stream off | hid on | hid off | max reset");
+    else if (!*line) Serial.println("STATUS,HELP,tare | cal <known_kg> | status | stream on/off | hid on/off | max reset | tune show/set/reset/save");
     else {
       Serial.printf("ACK,%s\n", line);
       if (!strcmp(line, "stream on")) { streamEnabled = true; Serial.println("STATUS,STREAM,ON"); }
@@ -92,6 +107,19 @@ void commands(uint32_t now) {
         Serial.println(JUMP_PAD_HID ? "STATUS,HID,ON" : "ERROR,HID_NOT_COMPILED");
       }
       else if (!strcmp(line, "max reset")) resetPeak();
+      else if (!strcmp(line, "tune show")) printTuning();
+      else if (!strcmp(line, "tune reset")) applyTuning(DetectorTuning{});
+      else if (!strcmp(line, "tune save")) {
+        const SavedDetectorTuning saved = { tuningVersion, detector.tuning };
+        if (prefs.putBytes("tuning-v1", &saved, sizeof(saved)) == sizeof(saved)) {
+          tuningDirty = false; printTuning();
+        } else Serial.println("ERROR,TUNE_SAVE_FAILED");
+      }
+      else if (!strncmp(line, "tune set ", 9)) {
+        DetectorTuning next;
+        if (parseDetectorTuning(line, next)) applyTuning(next);
+        else Serial.println("ERROR,TUNE,use tune set <enter_kg> <leave_kg> <air_kg> <land_kg> <standing_ms> <air_ms> <landing_ms>");
+      }
       else if (!strcmp(line, "status")) {
         Serial.printf("STATUS,MAX,kg=%.3f,valid=%u,clipped=%u\n",
                       peakWeight.kg, peakWeight.valid, peakWeight.clipped);
@@ -99,6 +127,7 @@ void commands(uint32_t now) {
                       unsigned(JUMP_PAD_HID), hidOutput.key.enabled, hidOutput.connected(), hidOutput.key.down);
         Serial.printf("STATUS,SENSOR,%s,taring=%u,zero_valid=%u,raw=%ld,filtered=%.2f,sps=%.1f,counts_per_kg=%.6f\n",
                       fault ? "ERROR" : "OK", taring, zeroValid, (long)raw, filtered, sps, scale);
+        printTuning();
       }
       else if (!strcmp(line, "tare")) startTare(now);
     else if (!strncmp(line, "cal ", 4)) {
@@ -114,7 +143,7 @@ void commands(uint32_t now) {
         scale = candidate; detector.reset(); hidOutput.release(); resetPeak();
         Serial.printf("STATUS,COUNTS_PER_KG,%.6f\n", scale);
       }
-    } else Serial.println("ERROR,UNKNOWN_COMMAND,use tare | cal <known_kg> | status | stream on | stream off | hid on | hid off | max reset");
+    } else Serial.println("ERROR,UNKNOWN_COMMAND,use tare | cal <known_kg> | status | stream on/off | hid on/off | max reset | tune show/set/reset/save");
     }
     input.clear();
     if (!streamEnabled) Serial.println("READY,quiet_mode,type_command_then_Enter");
@@ -143,7 +172,12 @@ void setup() {
   pinMode(Config::dt, INPUT_PULLUP);
   prefs.begin("jump-pad", false); scale = prefs.getFloat("scale", 0);
   if (!isfinite(scale)) scale = 0;
-  Serial.println("BOOT,Fun Arcade,AtomS3,0.2.1");
+  SavedDetectorTuning saved;
+  if (prefs.getBytesLength("tuning-v1") == sizeof(saved) &&
+      prefs.getBytes("tuning-v1", &saved, sizeof(saved)) == sizeof(saved) &&
+      saved.version == tuningVersion && validDetectorTuning(saved.values))
+    detector.setTuning(saved.values);
+  Serial.println("BOOT,Fun Arcade,AtomS3,0.3.0");
   Serial.println("HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated");
   startTare(millis()); rateStart = millis();
 }

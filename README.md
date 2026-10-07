@@ -43,7 +43,7 @@ Calibration is stored on the AtomS3, not the computer. Moving the same pad to an
 3. Leave the pad empty at boot or after a sensor fault. Automatic tare discards 500 ms, then averages for at least two seconds (20 samples minimum). Serial `tare` followed by newline repeats this. The display button resets the recorded maximum weight. Tare assumes the pad is empty; it cannot distinguish a stationary person from the pad.
 4. Check raw readings under small loads at each corner. All four must change the sum in the same direction. Check reported SPS: near 80, not 10.
 5. After tare, place a known stable weight, e.g. 10 kg, and send `cal 10` followed by newline. Signed counts/kg are saved in NVS; zero is measured again each boot. Remove weight and verify near zero. Calibration is deliberately manual; wait for a steady reading before sending it.
-6. Start with controlled loading/unloading, then tune `include/Config.h` before trying small hops on a mechanically validated platform.
+6. Start with controlled loading/unloading, then use the live detector tuning commands below before trying small hops on a mechanically validated platform.
 
 ## Serial protocol
 
@@ -63,7 +63,7 @@ Serial writes have zero timeout so disconnected/slow hosts cannot indefinitely b
 
 ## Detector and limits
 
-`EMPTY` requires >=8 kg for 500 ms to arm `STANDING`. A drop below 65% of the tracked load enters `UNWEIGHTING`; <2 kg for 25 ms emits JUMP and enters `AIRBORNE`. >=5 kg emits LAND and enters `LANDING`; after 200 ms loaded, it returns to STANDING. Unweighting expires after 450 ms and flight after 1500 ms. LANDING unloading resets EMPTY. Sensor errors, tare, and calibration reset detection.
+By default, `EMPTY` requires >=8 kg for 500 ms to arm `STANDING`. A drop below 65% of the tracked load enters `UNWEIGHTING`; <2 kg for 25 ms emits JUMP and enters `AIRBORNE`. >=5 kg emits LAND and enters `LANDING`; after 200 ms loaded, it returns to STANDING. Unweighting expires after 450 ms and flight after 1500 ms. LANDING unloading below 3 kg resets EMPTY. Sensor errors, tare, and calibration reset detection.
 
 Thresholds are starting values, not measured pad tuning. Walking off can look like a jump; one total-force sensor cannot prove a person is airborne. Long absence resets EMPTY without a LAND event. Bounce/noise and real takeoff latency require physical testing. Automatic tare after recovery requires everyone to step off.
 
@@ -136,3 +136,18 @@ This is the largest sampled equivalent load in kg, not a certified peak-force or
 Host test: `c++ -std=c++11 -Iinclude test/peak_weight_test.cpp -o /tmp/jump-pad-peak-test && /tmp/jump-pad-peak-test`.
 
 On hardware: apply and remove a known mass, confirm MAX stays; press the display button unloaded, confirm it resets without starting tare; verify MAX remains visible during JUMP/LAND and both USB outputs still work. Hardware acceptance for this display change is pending.
+
+## Live detector tuning (0.3.0)
+
+The composite USB Serial + keyboard firmware now accepts these 115200 baud commands. `status` or `tune show` includes the active thresholds and `dirty=1` while they are not saved. `tune set` applies all seven values together and resets detection, releasing Space if held. Leave the pad empty when applying a new profile, then measure several takeoff/landing cycles before saving.
+
+```text
+tune show
+tune set <enter_kg> <leave_kg> <air_kg> <land_kg> <standing_ms> <air_ms> <landing_ms>
+tune reset
+tune save
+```
+
+The default profile is `8 3 2 5 500 25 200`. `enter` is the weight needed to arm, `leave` detects stepping off during landing, `air` confirms takeoff, and `land` confirms landing. The thresholds must satisfy `0.2 <= air < leave < land < enter <= 100`. Time ranges are 50–2000 ms for standing, 0–200 ms for takeoff confirmation, and 0–1000 ms for landing recovery. `tune reset` restores defaults in RAM; use `tune save` to make either a custom profile or the defaults survive reboot. Existing calibration is stored separately and remains intact. For a lighter child, first record raw weight and state in Crossing Fair's Operator Settings, then choose thresholds based on those measurements rather than applying a guessed profile.
+
+Changing the HX711 to the Adafruit NAU7802 breakout requires a separate firmware sensor driver and I2C wiring. The NAU7802 supports up to 320 samples/s, but simply selecting a faster rate cannot fix thresholds or browser/game hop timing. Keep the current HX711 wiring and calibrated profile until the new board is wired, readings validated at known weights, and the detector rechecked with several consecutive jumps. [Adafruit NAU7802 board and guide](https://learn.adafruit.com/adafruit-nau7802-24-bit-adc-stemma-qt-qwiic).
