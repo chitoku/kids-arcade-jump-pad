@@ -177,7 +177,7 @@ void setup() {
       prefs.getBytes("tuning-v1", &saved, sizeof(saved)) == sizeof(saved) &&
       saved.version == tuningVersion && validDetectorTuning(saved.values))
     detector.setTuning(saved.values);
-  Serial.println("BOOT,Fun Arcade,AtomS3,0.3.1");
+  Serial.println("BOOT,Fun Arcade,AtomS3,0.3.2");
   Serial.println("HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated");
   startTare(millis()); rateStart = millis();
 }

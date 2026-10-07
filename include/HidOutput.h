@@ -47,12 +47,14 @@ class HidOutput {
     if (!active || !tud_hid_ready()) return;
     // TinyUSB queues a report without waiting for transfer completion.
     // Retry if busy; release intent always supersedes an unsent press.
-    if (needsSync || sentDown != key.down) {
+    // A queued report is not proof that the host received it. Reassert the
+    // current key state periodically so a lost key-up cannot hold Space forever.
+    if (needsSync || sentDown != key.down || now - lastReportAt >= 100) {
       uint8_t keys[6] = {};
       bool nextDown = needsSync ? false : key.down;
       if (nextDown) keys[0] = HID_KEY_SPACE;
       if (tud_hid_keyboard_report(HID_REPORT_ID_KEYBOARD, 0, keys)) {
-        sentDown = nextDown; needsSync = false;
+        sentDown = nextDown; needsSync = false; lastReportAt = now;
       }
     }
 #else
@@ -61,4 +63,5 @@ class HidOutput {
   }
  private:
   bool wasActive = false, needsSync = true, sentDown = false;
+  uint32_t lastReportAt = 0;
 };
