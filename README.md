@@ -173,3 +173,7 @@ The Serial-only test log `jump-pad-2026-10-17T03-42-28-409Z.jsonl` contains cont
 ### Sensor faults must not redefine zero
 
 The `jump-pad-2026-10-17T03-47-21-458Z.jsonl` session showed repeated negative ADC rail samples (-8388608), invalid weight samples and automatic recovery tares. The final recovery tare changed zero from approximately -80360 to +30493 counts; unloaded raw near -82977 then displayed approximately -5 kg. Recovery now retains an already established zero. A new zero is acquired only at startup or by explicit tare; initial startup acquisition still restarts after faults until it succeeds. The cause of the negative rail excursions is unconfirmed and requires checking the bridge wiring/terminals and mechanical loading.
+
+### Degraded sensor mitigation
+
+Calibrated net samples below -5 kg and either ADC rail (including negative rail + 1) are rejected. They do not enter jump detection or peak weight; the weight field is nan/ready=0 and the LCD shows sensor error while raw data remains in logs. The existing zero is retained. After 200 ms of continuously plausible samples, a still-loaded pad re-arms at the current load without emitting a jump or requiring an additional 500 ms dwell. SAMPLE_REJECTED/SAMPLE_RECOVERED mark transitions. This mitigates implausible negative excursions, but cannot recover missing measurements or compensate an individual damaged half-bridge in the combined four-cell circuit. Large corrupt positive samples and offset shifts within the allowed range are not resolved by this guard. Hardware validation is pending.

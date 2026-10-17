@@ -14,6 +14,10 @@ class Detector {
   DetectorTuning tuning;
   void setTuning(const DetectorTuning& next) { tuning = next; reset(); }
   void reset() { state = State::EMPTY; timing = lowTiming = false; baseline = 0; }
+  void resumeLoaded(float kg, uint32_t now) {
+    reset();
+    if (kg >= tuning.enterKg) { baseline = kg; go(State::STANDING, now); }
+  }
   Event update(float kg, uint32_t now) {
     switch (state) {
       case State::EMPTY:

@@ -6,6 +6,7 @@
 #include <Adafruit_NAU7802.h>
 #include "AdcButton.h"
 #include "SerialLines.h"
+#include "SampleGuard.h"
 #include "Config.h"
 #include "Detector.h"
 #include "CommandLine.h"
@@ -50,6 +51,7 @@ struct SavedDetectorTuning { uint32_t version; DetectorTuning values; };
 constexpr uint32_t tuningVersion = 1;
 bool tuningDirty = false;
 PeakWeight peakWeight;
+SampleGuard sampleGuard;
 portMUX_TYPE hxMux = portMUX_INITIALIZER_UNLOCKED;
 int32_t raw = 0;
 float zero = 0, filtered = 0, scale = 0;
@@ -160,6 +162,7 @@ void applyTuning(const DetectorTuning& next) {
   printTuning();
 }
 void startTare(uint32_t now) {
+  sampleGuard.reset();
   taring = true; zeroValid = false; tareSum = 0; tareCount = 0; tareStart = now;
   detector.reset(); hidOutput.release();
   if (!editing) console.println("STATUS,TARE,keep_pad_empty");
@@ -338,12 +341,26 @@ void loop() {
     bool recovering = fault || now - lastSample > Config::sensorTimeoutMs; lastSample = now;
     // The NAU7802 log alternates between the negative rail and rail + 1.
     // Neither code is a usable weight sample.
-    fault = raw <= -8388607 || raw >= 8388607;
-    if (fault) { peakWeight.clipped = true; detector.reset(); }
+    const bool rail = raw <= -8388607 || raw >= 8388607;
+    const bool negativeFault = zeroValid && !taring && scale != 0 &&
+                               (raw - zero) / scale < -5.0f;
+    const bool wasRecovering = sampleGuard.recovering;
+    fault = !sampleGuard.update(!rail && !negativeFault, now);
+    if (fault) {
+      if (rail) peakWeight.clipped = true;
+      detector.reset(); hidOutput.release();
+      if (!wasRecovering && !editing)
+        console.printf("STATUS,SAMPLE_REJECTED,reason=%s,raw=%ld\n",
+                       rail ? "ADC_RAIL" : "BELOW_MINUS_5KG", (long)raw);
+    }
     else {
       // Never redefine zero under a player after a transient sensor fault.
       // Only startup or an explicit tare command may establish a new zero.
       if (recovering && !zeroValid) startTare(now);
+      if (sampleGuard.justRecovered && zeroValid && !taring && scale != 0) {
+        detector.resumeLoaded((raw - zero) / scale, now);
+        if (!editing) console.println("STATUS,SAMPLE_RECOVERED");
+      }
       ++sampleCount;
       // Discard first 500 ms for power-up/settling; average at least 2 seconds.
       if (taring && now - tareStart >= 500) {
