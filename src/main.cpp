@@ -21,6 +21,8 @@ Preferences prefs;
 Adafruit_NAU7802 nau;
 AdcButton adcButton;
 bool useNau = false, adcReady = false;
+const char* adcInitStage = "not_started";
+int nauBusStatus = -1;
 const char* adcName() { return useNau ? "NAU7802" : "HX711"; }
 const char* scaleKey() { return useNau ? "scale-nau" : "scale-hx"; }
 Detector detector;
@@ -64,6 +66,31 @@ bool calibrateNauInternal() {
     delay(2);
   }
   return false;
+}
+
+bool initNau() {
+  adcInitStage = "i2c_bus";
+  if (!Wire.begin(Config::nauSda, Config::nauScl)) return false;
+  Wire.setClock(100000); Wire.setTimeOut(50);
+  adcInitStage = "i2c_address_0x2A";
+  Wire.beginTransmission(NAU7802_I2CADDR_DEFAULT);
+  nauBusStatus = Wire.endTransmission();
+  if (nauBusStatus != 0) return false;
+  adcInitStage = "device_begin";
+  if (!nau.begin(&Wire)) return false;
+  adcInitStage = "ldo_3V0";
+  if (!nau.setLDO(NAU7802_3V0)) return false;
+  adcInitStage = "gain_128";
+  if (!nau.setGain(NAU7802_GAIN_128)) return false;
+  adcInitStage = "channel_A";
+  if (!nau.setChannel(0)) return false; // Library: 0 = A, 1 = B.
+  adcInitStage = "rate_80";
+  if (!nau.setRate(NAU7802_RATE_80SPS)) return false;
+  delay(250); // Settle after changing LDO/gain/rate before internal calibration.
+  adcInitStage = "internal_calibration";
+  if (!calibrateNauInternal()) return false;
+  adcInitStage = "ready";
+  return true;
 }
 
 // No wait-for-ready loop. Protect short clock pulses from interrupt stretching
@@ -168,7 +195,10 @@ void commands(uint32_t now) {
                       unsigned(JUMP_PAD_HID), hidOutput.key.enabled, hidOutput.connected(), hidOutput.key.down);
         Serial.printf("STATUS,SENSOR,%s,taring=%u,zero_valid=%u,raw=%ld,filtered=%.2f,sps=%.1f,counts_per_kg=%.6f\n",
                       fault ? "ERROR" : "OK", taring, zeroValid, (long)raw, filtered, sps, scale);
-        Serial.printf("STATUS,ADC,%s,initialized=%u\n", adcName(), adcReady);
+        Serial.printf("STATUS,ADC,%s,initialized=%u,stage=%s,i2c_status=%d,sda=%d,scl=%d\n",
+                      adcName(), adcReady, adcInitStage, nauBusStatus,
+                      useNau ? digitalRead(Config::nauSda) : -1,
+                      useNau ? digitalRead(Config::nauScl) : -1);
         printTuning();
       }
       else if (!strcmp(line, "tare")) startTare(now);
@@ -219,16 +249,11 @@ void setup() {
     prefs.putFloat("scale-hx", prefs.getFloat("scale", 0));
   scale = prefs.getFloat(scaleKey(), 0);
   if (useNau) {
-    Wire.begin(Config::nauSda, Config::nauScl);
-    Wire.setClock(100000); Wire.setTimeOut(50);
-    adcReady = nau.begin(&Wire) && nau.setLDO(NAU7802_3V0) &&
-               nau.setGain(NAU7802_GAIN_128) && nau.setChannel(1) &&
-               nau.setRate(NAU7802_RATE_80SPS);
-    if (adcReady) adcReady = calibrateNauInternal();
+    adcReady = initNau();
   } else {
     pinMode(Config::sck, OUTPUT); digitalWrite(Config::sck, LOW);
     pinMode(Config::dt, INPUT_PULLUP);
-    adcReady = true;
+    adcReady = true; adcInitStage = "ready";
   }
   if (!isfinite(scale)) scale = 0;
   SavedDetectorTuning saved;
@@ -236,7 +261,8 @@ void setup() {
       prefs.getBytes("tuning-v1", &saved, sizeof(saved)) == sizeof(saved) &&
       saved.version == tuningVersion && validDetectorTuning(saved.values))
     detector.setTuning(saved.values);
-  Serial.println("BOOT,Fun Arcade,AtomS3,0.4.0");
+  Serial.println("BOOT,Fun Arcade,AtomS3,0.4.1");
+  Serial.printf("STATUS,ADC,%s,initialized=%u,stage=%s,i2c_status=%d\n", adcName(), adcReady, adcInitStage, nauBusStatus);
   Serial.println("HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated");
   startTare(millis()); rateStart = millis();
 }
