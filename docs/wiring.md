@@ -15,6 +15,21 @@ USB supplies AtomS3. Do not use the Grove red 5V lead for this 3.3V wiring. ESP3
 
 [Editable system diagram](wiring.mmd) and [vector diagram](wiring.svg) accompany this table. The table and cell netlist below define actual connections; diagram positions do not define physical header orientation.
 
+## Adapter cable color convention
+
+[Photo-based AtomS3 → HX711 cable diagram (SVG)](atoms3-hx711-cable.svg) uses the supplied rear-view photo (USB-C at bottom). A [PNG copy](atoms3-hx711-cable.png) is also available.
+
+![AtomS3 to HX711 cable colors](atoms3-hx711-cable.png)
+
+| Wire color | AtomS3 | HX711 |
+|---|---|---|
+| Red | 3V3 | VCC |
+| Orange | G5 | DT / DOUT |
+| Yellow | G6 | SCK / PD_SCK |
+| Black | GND | GND |
+
+These are the Jump Pad cable colors, not a general connector standard. Follow the board labels when soldering the universal adapter board; connector pin order is not prescribed by this diagram. The right-hand 5V header is unused. The original supplied photo is saved in `images/atoms3-rear-reference.png`.
+
 ## Four three-wire half bridges
 
 Each cell contains two resistive sections with a center tap C and two outer ends X/Y. With power disconnected, the largest resistance is between the two outer wires; C-to-each-end is approximately half that. Wire colors vary: measure and label C1..C4, X1..X4, Y1..Y4 rather than assuming red is center.
