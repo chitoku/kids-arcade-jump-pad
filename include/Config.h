@@ -1,6 +1,7 @@
 #pragma once
 namespace Config {
 constexpr int dt = 5, sck = 6;
+constexpr int nauSda = 6, nauScl = 7;
 enum class OutputMode { SERIAL_ONLY, SERIAL_PLUS_HID };
 #ifndef JUMP_PAD_HID
 #define JUMP_PAD_HID 1

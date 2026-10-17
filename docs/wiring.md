@@ -60,3 +60,7 @@ After changing RATE, power-cycle and check the firmware's measured SPS. 80 SPS n
 ## Fritzing
 
 No Fritzing executable/app was found in PATH or /Applications on this Mac, and no verified AtomS3/HX711 parts were available for this task. No .fzz/.fz was fabricated. Mermaid, SVG, and this Markdown netlist remain editable in the repository.
+
+## Optional NAU7802 ADC
+
+The dual-ADC firmware selects HX711 or NAU7802 with a two-second screen-button hold, persists the choice, and reboots. NAU7802 wiring: AtomS3 **3V3 → VIN, GND → GND, G6 → SDA, G7 → SCL**. Channel A is configured at 80 SPS, gain 128, with a 3.0 V analog LDO. Move E+/E-/A+/A- to matching terminals; leave B+/B- open. Never connect both ADC boards simultaneously: GPIO6 has a different role in each mode. Power off before changing boards. See the [operation and calibration instructions](quickstart-ja.md#adcの切り替えhx711--nau7802).

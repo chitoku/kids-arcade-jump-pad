@@ -157,3 +157,7 @@ Since 0.3.1, takeoff also accepts a drop below 25% of the player's established s
 Since 0.3.2, the HID keyboard reasserts its current Space state every 100 ms, including the released state. This limits a stuck Space key if a queued key-up report fails to reach the host. `STATUS,HID` still reports the firmware's requested state, not an acknowledgement from the host.
 
 Changing the HX711 to the Adafruit NAU7802 breakout requires a separate firmware sensor driver and I2C wiring. The NAU7802 supports up to 320 samples/s, but simply selecting a faster rate cannot fix thresholds or browser/game hop timing. Keep the current HX711 wiring and calibrated profile until the new board is wired, readings validated at known weights, and the detector rechecked with several consecutive jumps. [Adafruit NAU7802 board and guide](https://learn.adafruit.com/adafruit-nau7802-24-bit-adc-stemma-qt-qwiic).
+
+## HX711 / NAU7802 selection (0.4.0)
+
+Hold the screen button for two seconds to switch ADC, save the selection, and reboot. Short press still resets peak weight. Each ADC has its own saved weight calibration; the existing HX711 calibration migrates automatically. NAU7802 uses SDA=G6, SCL=G7, channel A, gain 128, 80 SPS and 3.0 V bridge excitation. Power off before swapping ADC boards. See [Japanese instructions](docs/quickstart-ja.md) and [wiring](docs/wiring.md). Host tests and both firmware builds pass; NAU7802 hardware validation is pending.

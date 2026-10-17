@@ -2,6 +2,9 @@
 #include <M5Unified.h>
 #include <Preferences.h>
 #include <math.h>
+#include <Wire.h>
+#include <Adafruit_NAU7802.h>
+#include "AdcButton.h"
 #include "Config.h"
 #include "Detector.h"
 #include "CommandLine.h"
@@ -15,6 +18,11 @@ bool editing = false;
 M5Canvas lcd(&M5.Display);
 bool lcdReady = false;
 Preferences prefs;
+Adafruit_NAU7802 nau;
+AdcButton adcButton;
+bool useNau = false, adcReady = false;
+const char* adcName() { return useNau ? "NAU7802" : "HX711"; }
+const char* scaleKey() { return useNau ? "scale-nau" : "scale-hx"; }
 Detector detector;
 struct SavedDetectorTuning { uint32_t version; DetectorTuning values; };
 constexpr uint32_t tuningVersion = 1;
@@ -31,9 +39,42 @@ int64_t tareSum = 0;
 unsigned tareCount = 0;
 const char* feedback = "";
 
+int readNauControl() {
+  Wire.beginTransmission(NAU7802_I2CADDR_DEFAULT);
+  Wire.write(NAU7802_CTRL2);
+  if (Wire.endTransmission(false) != 0 ||
+      Wire.requestFrom(uint8_t(NAU7802_I2CADDR_DEFAULT), uint8_t(1)) != 1)
+    return -1;
+  return Wire.read();
+}
+bool calibrateNauInternal() {
+  // Wait for CALS to clear, with a deadline. The library's calibrate()
+  // polls the opposite condition and can hang when the device is absent.
+  const int control = readNauControl();
+  if (control < 0) return false;
+  Wire.beginTransmission(NAU7802_I2CADDR_DEFAULT);
+  Wire.write(NAU7802_CTRL2);
+  Wire.write(uint8_t((control & ~0x07) | 0x04));
+  if (Wire.endTransmission() != 0) return false;
+  const uint32_t started = millis();
+  while (millis() - started < 1000) {
+    const int status = readNauControl();
+    if (status < 0) return false;
+    if (!(status & 0x04)) return !(status & 0x08);
+    delay(2);
+  }
+  return false;
+}
+
 // No wait-for-ready loop. Protect short clock pulses from interrupt stretching
 // (PD_SCK high >60 us powers the HX711 down). Channel A, gain 128: 25 pulses.
 bool readSensor(int32_t& value) {
+  if (!adcReady) return false;
+  if (useNau) {
+    if (!nau.available()) return false;
+    value = nau.read();
+    return true;
+  }
   if (digitalRead(Config::dt)) return false;
   uint32_t bits = 0;
   portENTER_CRITICAL(&hxMux);
@@ -127,6 +168,7 @@ void commands(uint32_t now) {
                       unsigned(JUMP_PAD_HID), hidOutput.key.enabled, hidOutput.connected(), hidOutput.key.down);
         Serial.printf("STATUS,SENSOR,%s,taring=%u,zero_valid=%u,raw=%ld,filtered=%.2f,sps=%.1f,counts_per_kg=%.6f\n",
                       fault ? "ERROR" : "OK", taring, zeroValid, (long)raw, filtered, sps, scale);
+        Serial.printf("STATUS,ADC,%s,initialized=%u\n", adcName(), adcReady);
         printTuning();
       }
       else if (!strcmp(line, "tare")) startTare(now);
@@ -136,7 +178,7 @@ void commands(uint32_t now) {
       if (*end || !isfinite(kg) || kg <= 0 || !isfinite(candidate) || fabsf(candidate) < 0.001f || !zeroValid || taring || fault || now - lastSample > Config::sensorTimeoutMs || fabsf(filtered) < 100)
         Serial.println("ERROR,CAL,use_known_kg_after_tare_and_stable_load");
       else {
-        if (prefs.putFloat("scale", candidate) != sizeof(float)) {
+        if (prefs.putFloat(scaleKey(), candidate) != sizeof(float)) {
           Serial.println("ERROR,CAL_SAVE_FAILED");
           input.clear(); continue;
         }
@@ -170,22 +212,50 @@ void setup() {
   if (!lcdReady) M5.Display.println("LCD BUFFER ERROR");
   hidOutput.begin();
   Serial.begin(115200); Serial.setTxTimeoutMs(0);
-  pinMode(Config::sck, OUTPUT); digitalWrite(Config::sck, LOW);
-  pinMode(Config::dt, INPUT_PULLUP);
-  prefs.begin("jump-pad", false); scale = prefs.getFloat("scale", 0);
+  prefs.begin("jump-pad", false);
+  useNau = prefs.getBool("adc-nau", false);
+  // Preserve existing HX711 calibration when upgrading older firmware.
+  if (!prefs.isKey("scale-hx") && prefs.isKey("scale"))
+    prefs.putFloat("scale-hx", prefs.getFloat("scale", 0));
+  scale = prefs.getFloat(scaleKey(), 0);
+  if (useNau) {
+    Wire.begin(Config::nauSda, Config::nauScl);
+    Wire.setClock(100000); Wire.setTimeOut(50);
+    adcReady = nau.begin(&Wire) && nau.setLDO(NAU7802_3V0) &&
+               nau.setGain(NAU7802_GAIN_128) && nau.setChannel(1) &&
+               nau.setRate(NAU7802_RATE_80SPS);
+    if (adcReady) adcReady = calibrateNauInternal();
+  } else {
+    pinMode(Config::sck, OUTPUT); digitalWrite(Config::sck, LOW);
+    pinMode(Config::dt, INPUT_PULLUP);
+    adcReady = true;
+  }
   if (!isfinite(scale)) scale = 0;
   SavedDetectorTuning saved;
   if (prefs.getBytesLength("tuning-v1") == sizeof(saved) &&
       prefs.getBytes("tuning-v1", &saved, sizeof(saved)) == sizeof(saved) &&
       saved.version == tuningVersion && validDetectorTuning(saved.values))
     detector.setTuning(saved.values);
-  Serial.println("BOOT,Fun Arcade,AtomS3,0.3.2");
+  Serial.println("BOOT,Fun Arcade,AtomS3,0.4.0");
   Serial.println("HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated");
   startTare(millis()); rateStart = millis();
 }
 void loop() {
   uint32_t now = millis(); M5.update(); commands(now);
-  if (M5.BtnA.wasPressed()) resetPeak();
+  const auto buttonAction = adcButton.update(M5.BtnA.isPressed(), now);
+  if (buttonAction == AdcButton::Action::SHORT_PRESS) resetPeak();
+  if (buttonAction == AdcButton::Action::LONG_PRESS) {
+    hidOutput.release();
+    if (prefs.putBool("adc-nau", !useNau) != sizeof(bool)) {
+      Serial.println("ERROR,ADC_SAVE_FAILED");
+    } else {
+      // Reboot releases GPIO6 from its old SCK/I2C role and reloads calibration.
+      M5.Display.fillScreen(TFT_BLACK);
+      M5.Display.setCursor(0, 30); M5.Display.setTextSize(2);
+      M5.Display.printf("ADC ->\n%s", useNau ? "HX711" : "NAU7802");
+      delay(300); ESP.restart();
+    }
+  }
   if (readSensor(raw)) {
     bool recovering = fault || now - lastSample > Config::sensorTimeoutMs; lastSample = now;
     fault = raw == -8388608 || raw == 8388607;
@@ -223,13 +293,13 @@ void loop() {
   }
   if (streamEnabled && !editing && now - lastStatus >= 2000) {
     lastStatus = now;
-    Serial.printf("STATUS,%s,sps=%.1f\n", fault ? "HX711_ERROR" : (sps < 60 ? "CHECK_RATE_80SPS" : "OK"), sps);
+    Serial.printf("STATUS,%s,sps=%.1f\n", fault ? (useNau ? "NAU7802_ERROR" : "HX711_ERROR") : (sps < 60 ? "CHECK_RATE_80SPS" : "OK"), sps);
   }
   if (lcdReady && now > 1000 && now - lastDisplay >= 100) {
     lastDisplay = now;
     lcd.fillScreen(TFT_BLACK);
     if (fault) {
-      lcdLine("HX711", 12, 3);
+      lcdLine(adcName(), 12, 3);
       lcdLine("ERROR", 44, 3);
     } else if (taring) {
       lcdLine("TARE", 24, 4);
@@ -251,7 +321,7 @@ void loop() {
       }
     }
     char rateText[24];
-    snprintf(rateText, sizeof(rateText), "%.0f SPS%s", sps, sps < 60 ? " / NEED 80" : "");
+    snprintf(rateText, sizeof(rateText), "%s %.0f SPS", adcName(), sps);
     lcdLine(rateText, 80, 1);
     lcd.drawFastHLine(4, 91, 120, TFT_DARKGREY);
     lcdLine(peakWeight.clipped ? "MAX kg / ADC CLIP!" : "MAX kg", 94, 1);
