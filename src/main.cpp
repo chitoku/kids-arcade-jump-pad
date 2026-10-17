@@ -162,6 +162,8 @@ void lcdLine(const char* text, int y, int preferredSize) {
 void setup() {
   auto cfg = M5.config(); cfg.internal_imu = false; cfg.internal_rtc = false;
   M5.begin(cfg);
+  // The installed AtomS3 is mounted upside down.
+  M5.Display.setRotation((M5.Display.getRotation() + 2) % 4);
   M5.Display.setTextSize(2); M5.Display.println("Fun Arcade\nJump Pad\nBOOT OK");
   lcd.setColorDepth(16);
   lcdReady = lcd.createSprite(128, 128) != nullptr;
