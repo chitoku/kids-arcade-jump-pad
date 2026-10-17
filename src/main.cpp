@@ -336,7 +336,9 @@ void loop() {
   }
   if (readSensor(raw)) {
     bool recovering = fault || now - lastSample > Config::sensorTimeoutMs; lastSample = now;
-    fault = raw == -8388608 || raw == 8388607;
+    // The NAU7802 log alternates between the negative rail and rail + 1.
+    // Neither code is a usable weight sample.
+    fault = raw <= -8388607 || raw >= 8388607;
     if (fault) { peakWeight.clipped = true; detector.reset(); }
     else {
       // Never redefine zero under a player after a transient sensor fault.
