@@ -35,7 +35,15 @@ class Detector {
           if (now - lowSince >= tuning.airConfirmMs) { go(State::AIRBORNE, now); return Event::JUMP; }
         } else lowTiming = false;
         if (kg >= baseline * 0.8f) go(State::STANDING, now);
-        else if (now - since > Config::unweightTimeoutMs) reset();
+        else if (now - since > Config::unweightTimeoutMs) {
+          // A changed stance or a landing peak can leave the old baseline
+          // too high. A still-loaded pad is not EMPTY: re-arm at its current
+          // load without requiring another standing dwell or emitting JUMP.
+          if (kg >= tuning.enterKg) {
+            baseline = kg;
+            go(State::STANDING, now);
+          } else reset();
+        }
         break;
       case State::AIRBORNE:
         if (kg >= (baseline * 0.4f > tuning.landKg ? baseline * 0.4f : tuning.landKg)) {

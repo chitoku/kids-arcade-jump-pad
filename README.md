@@ -165,3 +165,7 @@ Hold the screen button for two seconds to switch ADC, save the selection, and re
 ### USB Serial backpressure
 
 USB output is queued as complete lines and drained in chunks no larger than the currently available CDC capacity. Excess telemetry is dropped rather than blocking sensor, LCD, or HID updates. Pending output is discarded when the serial host disconnects. After flashing this fix, an eight-second host read pause was followed by responsive commands and 80.5 SPS sampling. The operator then confirmed three consecutive jumps in the Serial-connected game, with the LCD returning from JUMP! each time. The bundled Arduino USBCDC write loop can spin on a full buffer even with its TX timeout set to zero.
+
+### Shifted stance and missed hops (2026-10-16)
+
+The Serial-only test log `jump-pad-2026-10-17T03-42-28-409Z.jsonl` contains continuous samples (largest device timestamp gap 22 ms), no HOST disconnect record, and a minimum of -0.345 kg. Around 181.960–185.812 s and 329.376–332.090 s, UNWEIGHTING timed out despite substantial remaining load; the resulting EMPTY state ignored repeated hops until a new 500 ms standing dwell. The detector now re-arms STANDING with the current baseline when that timeout occurs with at least enterKg still present. It emits no jump while re-arming and retains EMPTY for sub-threshold load. Rear-biased loading may trigger the changed baseline, but individual cell loads cannot be inferred from this combined bridge log. Hardware regression validation of this change is pending.

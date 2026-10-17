@@ -22,5 +22,21 @@ int main() {
   d.update(0, 3400); assert(d.state == State::EMPTY);
   d.reset(); d.update(30, UINT32_MAX - 200); d.update(30, 300);
   assert(d.state == State::STANDING);
+  // Recorded failure: standing load drops to ~37 kg, UNWEIGHTING times out,
+  // then successive <500 ms hops used to remain EMPTY for several seconds.
+  Detector shifted;
+  shifted.update(70, 0); shifted.update(70, 500);
+  shifted.update(37, 600);
+  assert(shifted.state == State::UNWEIGHTING);
+  assert(shifted.update(37, 1060) == Event::NONE);
+  assert(shifted.state == State::STANDING);
+  shifted.update(0, 1072); shifted.update(0, 1084);
+  assert(shifted.update(0, 1110) == Event::JUMP);
+  assert(shifted.update(80, 1200) == Event::LAND);
+  Detector steppedOff;
+  steppedOff.update(70, 0); steppedOff.update(70, 500);
+  steppedOff.update(5, 600);
+  steppedOff.update(5, 1060);
+  assert(steppedOff.state == State::EMPTY);
   std::puts("Detector tests passed: dwell, jump/land, debounce, reset, timeout, wrap.");
 }
