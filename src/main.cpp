@@ -23,6 +23,8 @@ AdcButton adcButton;
 bool useNau = false, adcReady = false;
 const char* adcInitStage = "not_started";
 int nauBusStatus = -1;
+uint32_t lastNauInitAttempt = 0;
+unsigned nauInitRetries = 0;
 const char* adcName() { return useNau ? "NAU7802" : "HX711"; }
 const char* scaleKey() { return useNau ? "scale-nau" : "scale-hx"; }
 Detector detector;
@@ -76,8 +78,12 @@ bool initNau() {
   if (!Wire.begin(Config::nauSda, Config::nauScl)) return false;
   Wire.setClock(100000); Wire.setTimeOut(50);
   adcInitStage = "i2c_address_0x2A";
-  Wire.beginTransmission(NAU7802_I2CADDR_DEFAULT);
-  nauBusStatus = Wire.endTransmission();
+  for (unsigned attempt = 0; attempt < 3; ++attempt) {
+    delay(20);
+    Wire.beginTransmission(NAU7802_I2CADDR_DEFAULT);
+    nauBusStatus = Wire.endTransmission();
+    if (nauBusStatus == 0) break;
+  }
   if (nauBusStatus != 0) return false;
   adcInitStage = "device_begin";
   if (!nau.begin(&Wire)) return false;
@@ -266,6 +272,7 @@ void setup() {
   scale = prefs.getFloat(scaleKey(), 0);
   if (useNau) {
     adcReady = initNau();
+    lastNauInitAttempt = millis();
   } else {
     pinMode(Config::sck, OUTPUT); digitalWrite(Config::sck, LOW);
     pinMode(Config::dt, INPUT_PULLUP);
@@ -284,6 +291,17 @@ void setup() {
 }
 void loop() {
   uint32_t now = millis(); M5.update(); commands(now);
+  // The powered breakout may not ACK the first probe immediately after reset.
+  // Retry a bounded number of times so the screen/button remain usable.
+  if (useNau && !adcReady && nauInitRetries < 3 &&
+      now - lastNauInitAttempt >= 2000) {
+    ++nauInitRetries;
+    adcReady = initNau();
+    now = millis(); lastNauInitAttempt = now;
+    Serial.printf("STATUS,ADC_RETRY,%u,initialized=%u,stage=%s,i2c_status=%d\n",
+                  nauInitRetries, adcReady, adcInitStage, nauBusStatus);
+    if (adcReady) { startTare(now); sampleCount = 0; rateStart = now; }
+  }
   const auto buttonAction = adcButton.update(M5.BtnA.isPressed(), now);
   if (buttonAction == AdcButton::Action::SHORT_PRESS) resetPeak();
   if (buttonAction == AdcButton::Action::LONG_PRESS) {
