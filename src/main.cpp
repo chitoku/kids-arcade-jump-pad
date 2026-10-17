@@ -337,9 +337,11 @@ void loop() {
   if (readSensor(raw)) {
     bool recovering = fault || now - lastSample > Config::sensorTimeoutMs; lastSample = now;
     fault = raw == -8388608 || raw == 8388607;
-    if (fault) { peakWeight.clipped = true; detector.reset(); zeroValid = false; }
+    if (fault) { peakWeight.clipped = true; detector.reset(); }
     else {
-      if (recovering) startTare(now);
+      // Never redefine zero under a player after a transient sensor fault.
+      // Only startup or an explicit tare command may establish a new zero.
+      if (recovering && !zeroValid) startTare(now);
       ++sampleCount;
       // Discard first 500 ms for power-up/settling; average at least 2 seconds.
       if (taring && now - tareStart >= 500) {
@@ -363,7 +365,7 @@ void loop() {
     }
   }
   if (now - lastSample > Config::sensorTimeoutMs) {
-    fault = true; zeroValid = false; detector.reset();
+    fault = true; detector.reset();
   }
   hidOutput.update(millis(), !fault && zeroValid && !taring && scale != 0, detector.state);
   if (now - rateStart >= 2000) {

@@ -169,3 +169,7 @@ USB output is queued as complete lines and drained in chunks no larger than the 
 ### Shifted stance and missed hops (2026-10-16)
 
 The Serial-only test log `jump-pad-2026-10-17T03-42-28-409Z.jsonl` contains continuous samples (largest device timestamp gap 22 ms), no HOST disconnect record, and a minimum of -0.345 kg. Around 181.960–185.812 s and 329.376–332.090 s, UNWEIGHTING timed out despite substantial remaining load; the resulting EMPTY state ignored repeated hops until a new 500 ms standing dwell. The detector now re-arms STANDING with the current baseline when that timeout occurs with at least enterKg still present. It emits no jump while re-arming and retains EMPTY for sub-threshold load. Rear-biased loading may trigger the changed baseline, but individual cell loads cannot be inferred from this combined bridge log. Hardware regression validation of this change is pending.
+
+### Sensor faults must not redefine zero
+
+The `jump-pad-2026-10-17T03-47-21-458Z.jsonl` session showed repeated negative ADC rail samples (-8388608), invalid weight samples and automatic recovery tares. The final recovery tare changed zero from approximately -80360 to +30493 counts; unloaded raw near -82977 then displayed approximately -5 kg. Recovery now retains an already established zero. A new zero is acquired only at startup or by explicit tare; initial startup acquisition still restarts after faults until it succeeds. The cause of the negative rail excursions is unconfirmed and requires checking the bridge wiring/terminals and mechanical loading.
