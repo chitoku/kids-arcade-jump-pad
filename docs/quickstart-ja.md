@@ -1,17 +1,17 @@
 # 別のPCで試す手順
 
-標準の **atoms3はUSBキーボード＋Serial版**です。JUMPでSpaceを押し、LANDで離します。Serial専用はatoms3-serialを選んでください。HIDの実機・ゲームでの確認はこれからです。
+現在の実機試験・運用は **atoms3-serial（HID無効、Serial専用）** です。ゲームのConnect Serialで接続するとJUMPイベントが入力になります。既定環境のatoms3はUSBキーボード＋Serial版ですが、断続的な切断の切り分け中です。[変更と実機確認結果](validation-2026-10-16-ja.md)も参照してください。
 
 1. VS CodeとPlatformIO IDE拡張機能をインストール。
 2. VS Codeの「Git: Clone」で `https://github.com/chitoku/kids-arcade-jump-pad.git` を取得し、フォルダを開く。Gitがない場合は先にインストール。
-3. PlatformIO → Project Tasks → atoms3 → General → Build。
+3. PlatformIO → Project Tasks → atoms3-serial → General → Build。
 4. AtomS3をUSBデータケーブルで接続。Monitorを閉じてUpload。複数台ある場合は対象を確認。
 5. 接続エラーなら、画面ボタンではなくリセットボタンを約2秒長押し。内部の緑LEDが点灯したら離し、数秒後にUploadを再実行。
 6. Monitorを開く。入力はログの出るターミナル内。最初の文字でログが止まり、入力内容が表示される。Enterで実行。
 
 ## 校正と確認
 
-- 起動時は誰も乗らず、重りも載せない。自動でゼロ調整される。
+- 起動時は板だけを載せ、誰も乗らず、追加の重りも載せない。自動でゼロ調整される。
 - `tare`：今の無荷重状態をゼロにする。`STATUS,ZERO,...` を待つ。画面ボタンの短押しでも同じゼロ調整を開始できます。
 - 既知の重りを載せて安定後、1kgなら `cal 1`。`ACK`は受信、`STATUS,COUNTS_PER_KG,...`は校正成功。
 - `status`：状態を1回表示。

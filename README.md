@@ -2,11 +2,13 @@
 
 Firmware for **Fun Arcade**, Jun's official Kids Business Fair booth. Target: original M5Stack AtomS3 (C123, ESP32-S3), HX711 channel A / gain 128, four 50 kg three-wire half-bridge cells, plywood pad.
 
-[日本語の導入手順](docs/quickstart-ja.md)
+[日本語の導入手順](docs/quickstart-ja.md) / [2026-10-16の変更・実機確認・未解決事項](docs/validation-2026-10-16-ja.md)
+
+**Current tested configuration:** NAU7802 on GPIO5/6 at 80 SPS, `atoms3-serial` (HID disabled). Short display press performs tare; two-second hold changes ADC. Large negative excursions under front-right load remain an unresolved sensor/mechanical issue; the firmware guard mitigates invalid samples. See the validation report above before using historical notes below.
 
 ## Try it on another computer (VS Code + PlatformIO)
 
-The default `atoms3` build is a composite **USB keyboard + USB Serial** device: JUMP holds Space, LAND releases it. Serial telemetry remains available concurrently. `atoms3-serial` is the diagnostic-only alternative. HID implementation is build/test verified; actual game/USB validation is pending.
+The default `atoms3` build is a composite **USB keyboard + USB Serial** device: JUMP holds Space, LAND releases it. Serial telemetry remains available concurrently. `atoms3-serial` is the Serial-only alternative and is the current hardware-test configuration; Crossing Fair receives its Serial JUMP events for gameplay. The composite build passed short game tests but later showed intermittent disconnects; its reliability remains unresolved.
 
 1. Install Git, VS Code, and the **PlatformIO IDE** extension (Windows, macOS or Linux).
 2. Clone this repository and open its root folder (the one containing `platformio.ini`):
@@ -113,7 +115,7 @@ The hold is cancelled on tare, successful calibration, sensor fault/stale readin
 
 `hid off` disables key output until `hid on` or reboot. `hid on` waits for a new JUMP; it does not press Space immediately. `status` reports compiled/enabled/connected state and requested Space state (not host acknowledgement). Console typing pauses telemetry but does not disable HID; use `hid off` while calibrating if needed. `stream off` does not disable HID.
 
-For the old Serial-only behavior, select **atoms3-serial** in Project Tasks or use `pio run -e atoms3-serial -t upload`. This build does not register a keyboard descriptor. Normal `pio run` selects only `atoms3`.
+For Serial-only operation, select **atoms3-serial** in Project Tasks or use `pio run -e atoms3-serial -t upload`. This build does not register a keyboard descriptor. Normal `pio run` selects only `atoms3`.
 
 ### Hardware acceptance checklist (pending)
 
@@ -127,7 +129,7 @@ Host regression test: `c++ -std=c++11 -Iinclude test/space_key_test.cpp -o /tmp/
 
 ## Maximum recorded weight (0.2.1)
 
-The LCD always shows MAX kg, including during JUMP/LAND, tare and sensor errors. It records every valid calibrated sample (~80 SPS), not just the 10 Hz display updates. The current weight remains large; raw counts remain available in Serial. Press the display button once or send `max reset` to clear MAX. The next valid sample starts a new record immediately (so reset unloaded if you want it near zero). This button no longer tares or changes calibration or HID state.
+The LCD always shows MAX kg, including during JUMP/LAND, tare and sensor errors. It records every valid calibrated sample (~80 SPS), not just the 10 Hz display updates. The current weight remains large; raw counts remain available in Serial. Send `max reset` to clear MAX. The display short press now performs tare. The next valid sample starts a new record immediately (so reset unloaded if you want it near zero). The short press does not change the saved weight calibration factor.
 
 MAX is held in RAM until reset/reboot or successful recalibration. Tare and sensor recovery preserve the existing maximum. Before any valid sample, MAX shows `--`. `status` includes `STATUS,MAX,kg=...,valid=...,clipped=...`; existing DATA columns are unchanged. ADC saturation latches `ADC CLIP!` next to MAX until reset/reboot/recalibration; saturated samples are not valid peaks. The flag means the recorded maximum may understate the actual peak.
 
@@ -135,13 +137,13 @@ This is the largest sampled equivalent load in kg, not a certified peak-force or
 
 Host test: `c++ -std=c++11 -Iinclude test/peak_weight_test.cpp -o /tmp/jump-pad-peak-test && /tmp/jump-pad-peak-test`.
 
-On hardware: apply and remove a known mass, confirm MAX stays; press the display button unloaded, confirm it resets without starting tare; verify MAX remains visible during JUMP/LAND and both USB outputs still work. Hardware acceptance for this display change is pending.
+For current hardware validation, see the October 16 report. The display button performs tare, while MAX reset is a Serial command.
 
 ## Live detector tuning (0.3.0)
 
 The composite USB Serial + keyboard firmware now accepts these 115200 baud commands. `status` or `tune show` includes the active thresholds and `dirty=1` while they are not saved. `tune set` applies all seven values together and resets detection, releasing Space if held. Leave the pad empty when applying a new profile, then measure several takeoff/landing cycles before saving.
 
-The firmware currently emits both HID Space and Serial `EVENT,JUMP` / `EVENT,LAND`. Crossing Fair uses HID for gameplay and Serial for diagnostics, avoiding duplicate inputs. For a future Serial gameplay trial, use the firmware's event records as the input (not raw ADC samples), compare their timing against host Space keydown, and turn off HID with `hid off` or ignore it in the game for that pad. `hid on` restores the current HID behavior. This preserves both test paths without choosing one prematurely.
+The composite build emits both HID Space and Serial `EVENT,JUMP` / `EVENT,LAND`; the Serial-only build omits HID. Crossing Fair now accepts Serial JUMP events for gameplay and deduplicates concurrent HID Space input. Current hardware tests use `atoms3-serial`; raw ADC samples are diagnostic data, not game actions. `hid on` restores the current HID behavior. This preserves both test paths without choosing one prematurely.
 
 ```text
 tune show
@@ -156,7 +158,7 @@ Since 0.3.1, takeoff also accepts a drop below 25% of the player's established s
 
 Since 0.3.2, the HID keyboard reasserts its current Space state every 100 ms, including the released state. This limits a stuck Space key if a queued key-up report fails to reach the host. `STATUS,HID` still reports the firmware's requested state, not an acknowledgement from the host.
 
-Changing the HX711 to the Adafruit NAU7802 breakout requires a separate firmware sensor driver and I2C wiring. The NAU7802 supports up to 320 samples/s, but simply selecting a faster rate cannot fix thresholds or browser/game hop timing. Keep the current HX711 wiring and calibrated profile until the new board is wired, readings validated at known weights, and the detector rechecked with several consecutive jumps. [Adafruit NAU7802 board and guide](https://learn.adafruit.com/adafruit-nau7802-24-bit-adc-stemma-qt-qwiic).
+The firmware now includes both HX711 and Adafruit NAU7802 drivers with selectable operation; the two use different signal protocols on the shared cable. The NAU7802 supports up to 320 samples/s, but simply selecting a faster rate cannot fix thresholds or browser/game hop timing. Keep the current HX711 wiring and calibrated profile until the new board is wired, readings validated at known weights, and the detector rechecked with several consecutive jumps. [Adafruit NAU7802 board and guide](https://learn.adafruit.com/adafruit-nau7802-24-bit-adc-stemma-qt-qwiic).
 
 ## HX711 / NAU7802 selection (0.4.0)
 

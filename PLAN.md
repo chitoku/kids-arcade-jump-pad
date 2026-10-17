@@ -2,6 +2,8 @@
 
 Repository: `kids-arcade-jump-pad`; intended remote: `https://github.com/chitoku/kids-arcade-jump-pad.git`.
 
+Current configuration and hardware evidence: [October 16 validation report](docs/validation-2026-10-16-ja.md). The sections below retain the original milestone history; current operation uses NAU7802 at 80 SPS and the Serial-only build.
+
 ## Implemented initial milestones (prototype tested)
 
 - M0: AtomS3 display boot screen, USB CDC, no wait for a host.
@@ -14,7 +16,7 @@ Repository: `kids-arcade-jump-pad`; intended remote: `https://github.com/chitoku
 
 Builder confirmed four-corner 1 kg checks, responsive unloading, flicker-free large LCD and working JUMP/LAND on the assembled prototype. Telemetry confirmed about 82–83 SPS after the builder modified HX711 RATE wiring. Software smoothing is disabled.
 
-Remaining: finish and validate the mechanical assembly for the event, check stability on the actual grass surface, collect hop traces and tune thresholds as needed. Unplug sensor during standing and flight; verify no stale events and empty-pad recovery tare. Test with host disconnected and reconnected. Physical results above are builder reports and supplied telemetry; do not treat them as load-rating certification.
+Remaining: finish and validate the mechanical assembly for the event, check stability on the actual grass surface, collect hop traces and tune thresholds as needed. Unplug sensor during standing and flight; verify no stale events and preservation of the established zero through recovery; tare only with the pad unloaded. Test with host disconnected and reconnected. Physical results above are builder reports and supplied telemetry; do not treat them as load-rating certification.
 
 ## M5: concurrent USB HID + CDC — implemented, hardware verification pending
 
@@ -26,4 +28,4 @@ Both builds and host policy tests are required. Complete the README hardware acc
 
 ## Deferred
 
-No Wi-Fi, BLE, OTA, networking, cloud, or multiple pads. Consider bounded telemetry buffering/drop counters only if hardware measurements demonstrate a need. Tune walking-off rejection after collecting actual traces; do not add speculative complexity now.
+No Wi-Fi, BLE, OTA, networking, cloud, or multiple pads. Bounded telemetry buffering is now implemented after USB backpressure stalled sampling; additional drop-counter diagnostics remain deferred. Tune walking-off rejection after collecting actual traces; do not add speculative complexity now.
