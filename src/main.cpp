@@ -324,7 +324,7 @@ void loop() {
     if (adcReady) { startTare(now); sampleCount = 0; rateStart = now; }
   }
   const auto buttonAction = adcButton.update(M5.BtnA.isPressed(), now);
-  if (buttonAction == AdcButton::Action::SHORT_PRESS) resetPeak();
+  if (buttonAction == AdcButton::Action::SHORT_PRESS) startTare(now);
   if (buttonAction == AdcButton::Action::LONG_PRESS) {
     hidOutput.release();
     if (prefs.putBool("adc-nau", !useNau) != sizeof(bool)) {
