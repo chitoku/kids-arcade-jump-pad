@@ -188,7 +188,7 @@ void commands(uint32_t now) {
               Serial.printf("I2C_FOUND,0x%02X\n", address); ++found;
             }
           }
-          Serial.printf("I2C_SCAN_DONE,found=%u,sda=G6,scl=G7\n", found);
+          Serial.printf("I2C_SCAN_DONE,found=%u,sda=G%d,scl=G%d\n", found, Config::nauSda, Config::nauScl);
         }
       }
       else if (!strcmp(line, "tune show")) printTuning();
@@ -291,7 +291,7 @@ void loop() {
     if (prefs.putBool("adc-nau", !useNau) != sizeof(bool)) {
       Serial.println("ERROR,ADC_SAVE_FAILED");
     } else {
-      // Reboot releases GPIO6 from its old SCK/I2C role and reloads calibration.
+      // Reboot releases GPIO5/6 from their old ADC role and reloads calibration.
       M5.Display.fillScreen(TFT_BLACK);
       M5.Display.setCursor(0, 30); M5.Display.setTextSize(2);
       M5.Display.printf("ADC ->\n%s", useNau ? "HX711" : "NAU7802");

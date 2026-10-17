@@ -160,4 +160,4 @@ Changing the HX711 to the Adafruit NAU7802 breakout requires a separate firmware
 
 ## HX711 / NAU7802 selection (0.4.0)
 
-Hold the screen button for two seconds to switch ADC, save the selection, and reboot. Short press still resets peak weight. Each ADC has its own saved weight calibration; the existing HX711 calibration migrates automatically. NAU7802 uses SDA=G6, SCL=G7, channel A, gain 128, 80 SPS and 3.0 V bridge excitation. Power off before swapping ADC boards. See [Japanese instructions](docs/quickstart-ja.md) and [wiring](docs/wiring.md). Host tests and both firmware builds pass; NAU7802 hardware validation is pending.
+Hold the screen button for two seconds to switch ADC, save the selection, and reboot. Short press still resets peak weight. Each ADC has its own saved weight calibration; the existing HX711 calibration migrates automatically. NAU7802 uses SDA=G5, SCL=G6, channel A, gain 128, 80 SPS and 3.0 V bridge excitation. Power off before swapping ADC boards. See [Japanese instructions](docs/quickstart-ja.md) and [wiring](docs/wiring.md). Host tests and both firmware builds pass; NAU7802 hardware validation is pending.
