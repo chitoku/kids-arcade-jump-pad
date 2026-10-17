@@ -5,11 +5,29 @@
 #include <Wire.h>
 #include <Adafruit_NAU7802.h>
 #include "AdcButton.h"
+#include "SerialLines.h"
 #include "Config.h"
 #include "Detector.h"
 #include "CommandLine.h"
 #include "HidOutput.h"
 #include "PeakWeight.h"
+
+
+class SerialConsole : public Print {
+ public:
+  SerialLines queue;
+  size_t write(uint8_t c) override { queue.push(char(c)); return 1; }
+  using Print::write;
+  void pump() {
+    if (!Serial) { queue.clear(); return; }
+    const int space = Serial.availableForWrite();
+    size_t bytes = queue.remaining();
+    if (space <= 0 || !bytes) return;
+    if (bytes > size_t(space)) bytes = size_t(space);
+    if (bytes > 64) bytes = 64;
+    queue.consume(Serial.write(reinterpret_cast<const uint8_t*>(queue.data()), bytes));
+  }
+} console;
 
 HidOutput hidOutput;
 static_assert(ARDUINO_USB_MODE == 0, "Native TinyUSB mode required for future CDC + HID");
@@ -127,11 +145,11 @@ bool readSensor(int32_t& value) {
 }
 void resetPeak() {
   peakWeight.reset();
-  if (!editing) Serial.println("STATUS,MAX_RESET");
+  if (!editing) console.println("STATUS,MAX_RESET");
 }
 void printTuning() {
   const auto& t = detector.tuning;
-  Serial.printf("STATUS,TUNE,enter=%.2f,leave=%.2f,air=%.2f,land=%.2f,standing_ms=%u,air_ms=%u,landing_ms=%u,dirty=%u\n",
+  console.printf("STATUS,TUNE,enter=%.2f,leave=%.2f,air=%.2f,land=%.2f,standing_ms=%u,air_ms=%u,landing_ms=%u,dirty=%u\n",
                 t.enterKg, t.leaveKg, t.airKg, t.landKg,
                 t.standingMs, t.airConfirmMs, t.landingMs, tuningDirty);
 }
@@ -144,7 +162,7 @@ void applyTuning(const DetectorTuning& next) {
 void startTare(uint32_t now) {
   taring = true; zeroValid = false; tareSum = 0; tareCount = 0; tareStart = now;
   detector.reset(); hidOutput.release();
-  if (!editing) Serial.println("STATUS,TARE,keep_pad_empty");
+  if (!editing) console.println("STATUS,TARE,keep_pad_empty");
 }
 // Fan out to HID even when the interactive Serial console is quiet.
 void emitEvent(Event event, uint32_t now) {
@@ -152,7 +170,7 @@ void emitEvent(Event event, uint32_t now) {
   hidOutput.event(event, now);
   feedback = event == Event::JUMP ? "JUMP!" : "LAND";
   feedbackAt = now;
-  if (!editing) Serial.printf("EVENT,%s,%lu\n", event == Event::JUMP ? "JUMP" : "LAND", (unsigned long)now);
+  if (!editing) console.printf("EVENT,%s,%lu\n", event == Event::JUMP ? "JUMP" : "LAND", (unsigned long)now);
 }
 void commands(uint32_t now) {
   static CommandLine input;
@@ -161,40 +179,40 @@ void commands(uint32_t now) {
     char c = Serial.read();
     if (!editing && c >= 32 && c <= 126) {
       streamEnabled = false; editing = true;
-      Serial.print("\r\nSTATUS,STREAM,OFF\r\n> ");
+      console.print("\r\nSTATUS,STREAM,OFF\r\n> ");
     }
     const size_t oldUsed = input.used;
     if (!input.push(c)) {
-      if (editing && (c == '\b' || c == 127) && oldUsed > input.used) Serial.print("\b \b");
-      else if (editing && input.used > oldUsed) Serial.write(c);
+      if (editing && (c == '\b' || c == 127) && oldUsed > input.used) console.print("\b \b");
+      else if (editing && input.used > oldUsed) console.write(c);
       continue;
     }
-    if (editing) Serial.println();
+    if (editing) console.println();
     editing = false;
     char* line = input.text;
-    if (input.overflow) Serial.println("ERROR,COMMAND_TOO_LONG");
-    else if (!*line) Serial.println("STATUS,HELP,tare | cal <known_kg> | status | stream on/off | hid on/off | max reset | tune show/set/reset/save");
+    if (input.overflow) console.println("ERROR,COMMAND_TOO_LONG");
+    else if (!*line) console.println("STATUS,HELP,tare | cal <known_kg> | status | stream on/off | hid on/off | max reset | tune show/set/reset/save");
     else {
-      Serial.printf("ACK,%s\n", line);
-      if (!strcmp(line, "stream on")) { streamEnabled = true; Serial.println("STATUS,STREAM,ON"); }
-      else if (!strcmp(line, "stream off")) { streamEnabled = false; Serial.println("STATUS,STREAM,OFF"); }
-      else if (!strcmp(line, "hid off")) { hidOutput.key.enabled = false; hidOutput.release(); Serial.println("STATUS,HID,OFF"); }
+      console.printf("ACK,%s\n", line);
+      if (!strcmp(line, "stream on")) { streamEnabled = true; console.println("STATUS,STREAM,ON"); }
+      else if (!strcmp(line, "stream off")) { streamEnabled = false; console.println("STATUS,STREAM,OFF"); }
+      else if (!strcmp(line, "hid off")) { hidOutput.key.enabled = false; hidOutput.release(); console.println("STATUS,HID,OFF"); }
       else if (!strcmp(line, "hid on")) {
         hidOutput.key.enabled = JUMP_PAD_HID; hidOutput.release();
-        Serial.println(JUMP_PAD_HID ? "STATUS,HID,ON" : "ERROR,HID_NOT_COMPILED");
+        console.println(JUMP_PAD_HID ? "STATUS,HID,ON" : "ERROR,HID_NOT_COMPILED");
       }
       else if (!strcmp(line, "max reset")) resetPeak();
       else if (!strcmp(line, "adc scan")) {
-        if (!useNau) Serial.println("ERROR,select_NAU7802_first");
+        if (!useNau) console.println("ERROR,select_NAU7802_first");
         else {
           unsigned found = 0;
           for (uint8_t address = 8; address < 120; ++address) {
             Wire.beginTransmission(address);
             if (Wire.endTransmission() == 0) {
-              Serial.printf("I2C_FOUND,0x%02X\n", address); ++found;
+              console.printf("I2C_FOUND,0x%02X\n", address); ++found;
             }
           }
-          Serial.printf("I2C_SCAN_DONE,found=%u,sda=G%d,scl=G%d\n", found, Config::nauSda, Config::nauScl);
+          console.printf("I2C_SCAN_DONE,found=%u,sda=G%d,scl=G%d\n", found, Config::nauSda, Config::nauScl);
         }
       }
       else if (!strcmp(line, "tune show")) printTuning();
@@ -203,21 +221,21 @@ void commands(uint32_t now) {
         const SavedDetectorTuning saved = { tuningVersion, detector.tuning };
         if (prefs.putBytes("tuning-v1", &saved, sizeof(saved)) == sizeof(saved)) {
           tuningDirty = false; printTuning();
-        } else Serial.println("ERROR,TUNE_SAVE_FAILED");
+        } else console.println("ERROR,TUNE_SAVE_FAILED");
       }
       else if (!strncmp(line, "tune set ", 9)) {
         DetectorTuning next;
         if (parseDetectorTuning(line, next)) applyTuning(next);
-        else Serial.println("ERROR,TUNE,use tune set <enter_kg> <leave_kg> <air_kg> <land_kg> <standing_ms> <air_ms> <landing_ms>");
+        else console.println("ERROR,TUNE,use tune set <enter_kg> <leave_kg> <air_kg> <land_kg> <standing_ms> <air_ms> <landing_ms>");
       }
       else if (!strcmp(line, "status")) {
-        Serial.printf("STATUS,MAX,kg=%.3f,valid=%u,clipped=%u\n",
+        console.printf("STATUS,MAX,kg=%.3f,valid=%u,clipped=%u\n",
                       peakWeight.kg, peakWeight.valid, peakWeight.clipped);
-        Serial.printf("STATUS,HID,compiled=%u,enabled=%u,connected=%u,space_requested=%u\n",
+        console.printf("STATUS,HID,compiled=%u,enabled=%u,connected=%u,space_requested=%u\n",
                       unsigned(JUMP_PAD_HID), hidOutput.key.enabled, hidOutput.connected(), hidOutput.key.down);
-        Serial.printf("STATUS,SENSOR,%s,taring=%u,zero_valid=%u,raw=%ld,filtered=%.2f,sps=%.1f,counts_per_kg=%.6f\n",
+        console.printf("STATUS,SENSOR,%s,taring=%u,zero_valid=%u,raw=%ld,filtered=%.2f,sps=%.1f,counts_per_kg=%.6f\n",
                       fault ? "ERROR" : "OK", taring, zeroValid, (long)raw, filtered, sps, scale);
-        Serial.printf("STATUS,ADC,%s,initialized=%u,stage=%s,i2c_status=%d,sda=%d,scl=%d\n",
+        console.printf("STATUS,ADC,%s,initialized=%u,stage=%s,i2c_status=%d,sda=%d,scl=%d\n",
                       adcName(), adcReady, adcInitStage, nauBusStatus,
                       useNau ? digitalRead(Config::nauSda) : -1,
                       useNau ? digitalRead(Config::nauScl) : -1);
@@ -228,19 +246,19 @@ void commands(uint32_t now) {
       char* end; float kg = strtof(line + 4, &end);
       float candidate = kg > 0 ? filtered / kg : 0;
       if (*end || !isfinite(kg) || kg <= 0 || !isfinite(candidate) || fabsf(candidate) < 0.001f || !zeroValid || taring || fault || now - lastSample > Config::sensorTimeoutMs || fabsf(filtered) < 100)
-        Serial.println("ERROR,CAL,use_known_kg_after_tare_and_stable_load");
+        console.println("ERROR,CAL,use_known_kg_after_tare_and_stable_load");
       else {
         if (prefs.putFloat(scaleKey(), candidate) != sizeof(float)) {
-          Serial.println("ERROR,CAL_SAVE_FAILED");
+          console.println("ERROR,CAL_SAVE_FAILED");
           input.clear(); continue;
         }
         scale = candidate; detector.reset(); hidOutput.release(); resetPeak();
-        Serial.printf("STATUS,COUNTS_PER_KG,%.6f\n", scale);
+        console.printf("STATUS,COUNTS_PER_KG,%.6f\n", scale);
       }
-    } else Serial.println("ERROR,UNKNOWN_COMMAND,use tare | cal <known_kg> | status | stream on/off | hid on/off | max reset | tune show/set/reset/save");
+    } else console.println("ERROR,UNKNOWN_COMMAND,use tare | cal <known_kg> | status | stream on/off | hid on/off | max reset | tune show/set/reset/save");
     }
     input.clear();
-    if (!streamEnabled) Serial.println("READY,quiet_mode,type_command_then_Enter");
+    if (!streamEnabled) console.println("READY,quiet_mode,type_command_then_Enter");
   }
 }
 // Fit each line to the 128-pixel screen, including negative/three-digit weights.
@@ -284,9 +302,9 @@ void setup() {
       prefs.getBytes("tuning-v1", &saved, sizeof(saved)) == sizeof(saved) &&
       saved.version == tuningVersion && validDetectorTuning(saved.values))
     detector.setTuning(saved.values);
-  Serial.println("BOOT,Fun Arcade,AtomS3,0.4.1");
-  Serial.printf("STATUS,ADC,%s,initialized=%u,stage=%s,i2c_status=%d\n", adcName(), adcReady, adcInitStage, nauBusStatus);
-  Serial.println("HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated");
+  console.println("BOOT,Fun Arcade,AtomS3,0.4.1");
+  console.printf("STATUS,ADC,%s,initialized=%u,stage=%s,i2c_status=%d\n", adcName(), adcReady, adcInitStage, nauBusStatus);
+  console.println("HEADER,ms,raw,net,filtered,kg,state,sps,ready,calibrated");
   startTare(millis()); rateStart = millis();
 }
 void loop() {
@@ -298,7 +316,7 @@ void loop() {
     ++nauInitRetries;
     adcReady = initNau();
     now = millis(); lastNauInitAttempt = now;
-    Serial.printf("STATUS,ADC_RETRY,%u,initialized=%u,stage=%s,i2c_status=%d\n",
+    console.printf("STATUS,ADC_RETRY,%u,initialized=%u,stage=%s,i2c_status=%d\n",
                   nauInitRetries, adcReady, adcInitStage, nauBusStatus);
     if (adcReady) { startTare(now); sampleCount = 0; rateStart = now; }
   }
@@ -307,7 +325,7 @@ void loop() {
   if (buttonAction == AdcButton::Action::LONG_PRESS) {
     hidOutput.release();
     if (prefs.putBool("adc-nau", !useNau) != sizeof(bool)) {
-      Serial.println("ERROR,ADC_SAVE_FAILED");
+      console.println("ERROR,ADC_SAVE_FAILED");
     } else {
       // Reboot releases GPIO5/6 from their old ADC role and reloads calibration.
       M5.Display.fillScreen(TFT_BLACK);
@@ -328,7 +346,7 @@ void loop() {
         tareSum += raw; ++tareCount;
         if (now - tareStart >= 2500 && tareCount >= 20) {
           zero = double(tareSum) / tareCount; zeroValid = true; taring = false;
-          if (!editing) Serial.printf("STATUS,ZERO,%.2f\n", zero);
+          if (!editing) console.printf("STATUS,ZERO,%.2f\n", zero);
         }
       }
     }
@@ -339,9 +357,9 @@ void loop() {
     if (ready && scale != 0) emitEvent(detector.update(filtered / scale, now), now);
     // Nonblocking USB writes may drop telemetry if host is absent/slow.
     if (streamEnabled && !editing) {
-    Serial.printf("DATA,%lu,%ld,%.2f,%.2f,", (unsigned long)now, (long)raw, net, filtered);
-    if (ready && scale != 0) Serial.printf("%.3f", filtered / scale); else Serial.print("nan");
-    Serial.printf(",%s,%.1f,%u,%u\n", stateName(detector.state), sps, ready, scale != 0);
+    console.printf("DATA,%lu,%ld,%.2f,%.2f,", (unsigned long)now, (long)raw, net, filtered);
+    if (ready && scale != 0) console.printf("%.3f", filtered / scale); else console.print("nan");
+    console.printf(",%s,%.1f,%u,%u\n", stateName(detector.state), sps, ready, scale != 0);
     }
   }
   if (now - lastSample > Config::sensorTimeoutMs) {
@@ -353,7 +371,7 @@ void loop() {
   }
   if (streamEnabled && !editing && now - lastStatus >= 2000) {
     lastStatus = now;
-    Serial.printf("STATUS,%s,sps=%.1f\n", fault ? (useNau ? "NAU7802_ERROR" : "HX711_ERROR") : (sps < 60 ? "CHECK_RATE_80SPS" : "OK"), sps);
+    console.printf("STATUS,%s,sps=%.1f\n", fault ? (useNau ? "NAU7802_ERROR" : "HX711_ERROR") : (sps < 60 ? "CHECK_RATE_80SPS" : "OK"), sps);
   }
   if (lcdReady && now > 1000 && now - lastDisplay >= 100) {
     lastDisplay = now;
@@ -391,5 +409,6 @@ void loop() {
     lcdLine(peakText, 106, 2);
     lcd.pushSprite(0, 0); // Transfer the completed frame; never clear the live LCD.
   }
+  console.pump();
   delay(1);
 }
