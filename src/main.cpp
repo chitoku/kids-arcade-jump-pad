@@ -70,6 +70,9 @@ bool calibrateNauInternal() {
 
 bool initNau() {
   adcInitStage = "i2c_bus";
+  // Reclaim controller 0 after M5 initialization before choosing external pins.
+  Wire.end();
+  M5.Ex_I2C.release();
   if (!Wire.begin(Config::nauSda, Config::nauScl)) return false;
   Wire.setClock(100000); Wire.setTimeOut(50);
   adcInitStage = "i2c_address_0x2A";
@@ -175,6 +178,19 @@ void commands(uint32_t now) {
         Serial.println(JUMP_PAD_HID ? "STATUS,HID,ON" : "ERROR,HID_NOT_COMPILED");
       }
       else if (!strcmp(line, "max reset")) resetPeak();
+      else if (!strcmp(line, "adc scan")) {
+        if (!useNau) Serial.println("ERROR,select_NAU7802_first");
+        else {
+          unsigned found = 0;
+          for (uint8_t address = 8; address < 120; ++address) {
+            Wire.beginTransmission(address);
+            if (Wire.endTransmission() == 0) {
+              Serial.printf("I2C_FOUND,0x%02X\n", address); ++found;
+            }
+          }
+          Serial.printf("I2C_SCAN_DONE,found=%u,sda=G6,scl=G7\n", found);
+        }
+      }
       else if (!strcmp(line, "tune show")) printTuning();
       else if (!strcmp(line, "tune reset")) applyTuning(DetectorTuning{});
       else if (!strcmp(line, "tune save")) {
